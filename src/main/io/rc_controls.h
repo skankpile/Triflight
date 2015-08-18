@@ -113,6 +113,7 @@ typedef enum {
 #define CONTROL_RATE_CONFIG_YAW_RATE_MAX         255
 
 #define CONTROL_RATE_CONFIG_TPA_MAX              100
+#define CONTROL_RATE_CONFIG_YAW_TPA_MAX          255
 
 // steps are 25 apart
 // a value of 0 corresponds to a channel value of 900 or less
@@ -138,8 +139,10 @@ typedef struct controlRateConfig_s {
     uint8_t thrExpo8;
     uint8_t rates[3];
     uint8_t dynThrPID;
+    uint8_t tpa_yaw_rate;
     uint8_t rcYawExpo8;
     uint16_t tpa_breakpoint;                // Breakpoint where TPA is activated
+    uint16_t tpa_yaw_breakpoint;
 } controlRateConfig_t;
 
 extern int16_t rcCommand[4];

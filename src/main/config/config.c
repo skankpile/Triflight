@@ -287,7 +287,9 @@ static void resetControlRateConfig(controlRateConfig_t *controlRateConfig) {
     controlRateConfig->rcRate8 = 90;
     controlRateConfig->rcExpo8 = 65;
     controlRateConfig->thrMid8 = 50;
+    controlRateConfig->tpa_yaw_rate = 100;
     controlRateConfig->tpa_breakpoint = 1500;
+    controlRateConfig->tpa_yaw_breakpoint = 1500;
 }
 
 void resetRcControlsConfig(rcControlsConfig_t *rcControlsConfig) {
