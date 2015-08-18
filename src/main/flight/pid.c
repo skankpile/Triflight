@@ -57,7 +57,7 @@ int32_t axisPID_P[3], axisPID_I[3], axisPID_D[3];
 #endif
 
 // PIDweight is a scale factor for PIDs which is derived from the throttle and TPA setting, and 100 = 100% scale means no PID reduction
-uint8_t dynP8[3], dynI8[3], dynD8[3], PIDweight[3];
+uint8_t dynP8[3], dynI8[3], dynD8[3], Pweight[3], Iweight[3], Dweight[3];
 
 static int32_t errorGyroI[3] = { 0, 0, 0 };
 static float errorGyroIf[3] = { 0.0f, 0.0f, 0.0f };
@@ -186,14 +186,15 @@ static void pidLuxFloat(pidProfile_t *pidProfile, controlRateConfig_t *controlRa
         RateError = AngleRate - gyroRate;
 
         // -----calculate P component
-        PTerm = RateError * pidProfile->P_f[axis] * PIDweight[axis] / 100;
+
+        PTerm = RateError * pidProfile->P_f[axis] * Pweight[axis] / 100;
 
         // Pterm low pass
         if (pidProfile->pterm_cut_hz) {
             PTerm = filterApplyPt1(PTerm, &PTermState[axis], pidProfile->pterm_cut_hz);
         }
         // -----calculate I component. Note that PIDweight is divided by 10, because it is simplified formule from the previous multiply by 10
-        errorGyroIf[axis] = constrainf(errorGyroIf[axis] + RateError * dT * pidProfile->I_f[axis] * PIDweight[axis] / 10, -250.0f, 250.0f);
+        errorGyroIf[axis] = constrainf(errorGyroIf[axis] + RateError * dT * pidProfile->I_f[axis] * Iweight[axis] / 10, -250.0f, 250.0f);
 
         // limit maximum integrator value to prevent WindUp - accumulating extreme values when system is saturated.
         // I coefficient (I8) moved before integration to make limiting independent from PID settings
@@ -216,7 +217,7 @@ static void pidLuxFloat(pidProfile_t *pidProfile, controlRateConfig_t *controlRa
             deltaSum = filterApplyPt1(deltaSum, &DTermState[axis], pidProfile->dterm_cut_hz);
         }
 
-        DTerm = constrainf((deltaSum / 3.0f) * pidProfile->D_f[axis] * PIDweight[axis] / 100, -300.0f, 300.0f);
+        DTerm = constrainf((deltaSum / 3.0f) * pidProfile->D_f[axis] * Dweight[axis] / 100, -300.0f, 300.0f);
 
         // -----calculate total PID output
         axisPID[axis] = constrain(lrintf(PTerm + ITerm - DTerm), -1000, 1000);
@@ -777,7 +778,7 @@ static void pidRewrite(pidProfile_t *pidProfile, controlRateConfig_t *controlRat
         RateError = AngleRateTmp - (gyroADC[axis] / 4);
 
         // -----calculate P component
-        PTerm = (RateError * pidProfile->P8[axis] * PIDweight[axis] / 100) >> 7;
+        PTerm = (RateError * pidProfile->P8[axis] * Pweight[axis] / 100) >> 7;
 
         // Pterm low pass
         if (pidProfile->pterm_cut_hz) {
@@ -789,7 +790,7 @@ static void pidRewrite(pidProfile_t *pidProfile, controlRateConfig_t *controlRat
         // Precision is critical, as I prevents from long-time drift. Thus, 32 bits integrator is used.
         // Time correction (to avoid different I scaling for different builds based on average cycle time)
         // is normalized to cycle time = 2048.
-        errorGyroI[axis] = errorGyroI[axis] + ((RateError * cycleTime) >> 11) * pidProfile->I8[axis] * PIDweight[axis] / 100;
+        errorGyroI[axis] = errorGyroI[axis] + ((RateError * cycleTime) >> 11) * pidProfile->I8[axis] * Iweight[axis] / 100;
 
         // limit maximum integrator value to prevent WindUp - accumulating extreme values when system is saturated.
         // I coefficient (I8) moved before integration to make limiting independent from PID settings
@@ -813,7 +814,7 @@ static void pidRewrite(pidProfile_t *pidProfile, controlRateConfig_t *controlRat
             deltaSum = filterApplyPt1(deltaSum, &DTermState[axis], pidProfile->dterm_cut_hz);
         }
 
-        DTerm = (deltaSum * pidProfile->D8[axis] * PIDweight[axis] / 100) >> 8;
+        DTerm = (deltaSum * pidProfile->D8[axis] * Dweight[axis] / 100) >> 8;
 
         // -----calculate total PID output
         axisPID[axis] = PTerm + ITerm + DTerm;

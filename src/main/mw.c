@@ -105,7 +105,7 @@ uint8_t motorControlEnable = false;
 int16_t telemTemperature1;      // gyro sensor temperature
 static uint32_t disarmAt;     // Time of automatic disarm when "Don't spin the motors when armed" is enabled and auto_disarm_delay is nonzero
 
-extern uint8_t dynP8[3], dynI8[3], dynD8[3], PIDweight[3];
+extern uint8_t dynP8[3], dynI8[3], dynD8[3], Pweight[3], Iweight[3], Dweight[3];
 
 typedef void (*pidControllerFuncPtr)(pidProfile_t *pidProfile, controlRateConfig_t *controlRateConfig,
         uint16_t max_angle_inclination, rollAndPitchTrims_t *angleTrim, rxConfig_t *rxConfig);            // pid controller function prototype
@@ -174,11 +174,11 @@ bool isCalibrating()
 void annexCode(void)
 {
     int32_t tmp, tmp2;
-    int32_t axis, prop1 = 0, prop2;
+    int32_t axis, prop1 = 0, prop2, yawWeigth;
 
     static uint32_t vbatLastServiced = 0;
     static uint32_t ibatLastServiced = 0;
-    // PITCH & ROLL only dynamic PID adjustment,  depending on throttle value
+    // PITCH & ROLL dynamic PID adjustment,  depending on throttle value
     if (rcData[THROTTLE] < currentControlRateProfile->tpa_breakpoint) {
         prop2 = 100;
     } else {
@@ -186,6 +186,31 @@ void annexCode(void)
             prop2 = 100 - (uint16_t)currentControlRateProfile->dynThrPID * (rcData[THROTTLE] - currentControlRateProfile->tpa_breakpoint) / (2000 - currentControlRateProfile->tpa_breakpoint);
         } else {
             prop2 = 100 - currentControlRateProfile->dynThrPID;
+        }
+    }
+
+    // YAW dynamic PID adjustment
+    if (rcData[THROTTLE] < currentControlRateProfile->tpa_yaw_breakpoint) {
+        yawWeigth = 100;
+    } else {
+        if (rcData[THROTTLE] < 2000) {
+            if (currentControlRateProfile->tpa_yaw_rate >= 100)
+            {
+                yawWeigth = 100 + (uint16_t)(currentControlRateProfile->tpa_yaw_rate - 100) * (rcData[THROTTLE] - currentControlRateProfile->tpa_yaw_breakpoint) / (2000 - currentControlRateProfile->tpa_yaw_breakpoint);
+            }
+            else
+            {
+                yawWeigth = 100 - (uint16_t)currentControlRateProfile->tpa_yaw_rate * (rcData[THROTTLE] - currentControlRateProfile->tpa_yaw_breakpoint) / (2000 - currentControlRateProfile->tpa_yaw_breakpoint);
+            }
+        } else {
+            if (currentControlRateProfile->tpa_yaw_rate >= 100)
+            {
+                yawWeigth = currentControlRateProfile->tpa_yaw_rate;
+            }
+            else
+            {
+                yawWeigth = 100 - currentControlRateProfile->tpa_yaw_rate;
+            }
         }
     }
 
@@ -223,10 +248,14 @@ void annexCode(void)
 
         // non coupled PID reduction scaler used in PID controller 1 and PID controller 2. YAW TPA disabled. 100 means 100% of the pids
         if (axis == YAW) {
-            PIDweight[axis] = 100;
+            Pweight[axis] = yawWeigth;
+            Iweight[axis] = yawWeigth;
+            Dweight[axis] = yawWeigth;
         }
         else {
-            PIDweight[axis] = prop2;
+            Pweight[axis] = prop2;
+            Iweight[axis] = prop2;
+            Dweight[axis] = prop2;
         }
 
         if (rcData[axis] < masterConfig.rxConfig.midrc)
