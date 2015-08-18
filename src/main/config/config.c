@@ -294,8 +294,10 @@ static void resetControlRateConfig(controlRateConfig_t *controlRateConfig) {
     controlRateConfig->thrMid8 = 50;
     controlRateConfig->thrExpo8 = 0;
     controlRateConfig->dynThrPID = 0;
-    controlRateConfig->rcYawExpo8 = 20;
+    controlRateConfig->tpa_yaw_rate = 100;
+    controlRateConfig->rcYawExpo8 = 0;
     controlRateConfig->tpa_breakpoint = 1500;
+    controlRateConfig->tpa_yaw_breakpoint = 1500;
 
     for (uint8_t axis = 0; axis < FLIGHT_DYNAMICS_INDEX_COUNT; axis++) {
         controlRateConfig->rates[axis] = 0;
