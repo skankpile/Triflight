@@ -322,6 +322,8 @@ void resetMixerConfig(mixerConfig_t *mixerConfig) {
     mixerConfig->tri_unarmed_servo = 1;
     mixerConfig->servo_lowpass_freq = 400;
     mixerConfig->servo_lowpass_enable = 0;
+    mixerConfig->tri_servo_angle_at_max = 300;
+    mixerConfig->tri_tail_motor_thrustfactor = 100;
 #endif
 }
 
