@@ -576,6 +576,8 @@ const clivalue_t valueTable[] = {
     { "tri_unarmed_servo",          VAR_INT8   | MASTER_VALUE | MODE_LOOKUP, &masterConfig.mixerConfig.tri_unarmed_servo, .config.lookup = { TABLE_OFF_ON } },
     { "servo_lowpass_freq",         VAR_INT16  | MASTER_VALUE, &masterConfig.mixerConfig.servo_lowpass_freq, .config.minmax = { 10,  400} },
     { "servo_lowpass_enable",       VAR_INT8   | MASTER_VALUE | MODE_LOOKUP, &masterConfig.mixerConfig.servo_lowpass_enable, .config.lookup = { TABLE_OFF_ON } },
+    { "tri_servo_angle_at_max",     VAR_INT16  | MASTER_VALUE, &masterConfig.mixerConfig.tri_servo_angle_at_max, .config.minmax = { 0, 500 } },
+    { "tri_tail_motor_thrustfactor",VAR_INT16   | MASTER_VALUE, &masterConfig.mixerConfig.tri_tail_motor_thrustfactor, .config.minmax = { -200, 200 } },
 #endif
 
     { "default_rate_profile",       VAR_UINT8  | PROFILE_VALUE , &masterConfig.profile[0].defaultRateProfileIndex, .config.minmax = { 0,  MAX_CONTROL_RATE_PROFILE_COUNT - 1 } },
