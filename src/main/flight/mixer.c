@@ -54,6 +54,13 @@
 #include "config/runtime_config.h"
 #include "config/config.h"
 
+#ifdef USE_SERVOS
+#define TAIL_SERVO_ANGLE_MID_DEGREES 90.0f
+#endif
+
+#define DEGREES_TO_RADIANS(degrees) ((degrees) * (float)M_PI / 180.0f)
+#define RADIANS_TO_DEGREES(radians) ((radians) * 180.0f / (float)M_PI)
+
 //#define MIXER_DEBUG
 
 uint8_t motorCount;
@@ -327,6 +334,16 @@ static servoMixer_t *customServoMixers;
 
 static motorMixer_t *customMixers;
 
+#ifdef USE_SERVOS
+static float tailServoMaxYaw = 0;
+static float tailServoThrustFactor = 0;
+static float tailServoMaxAngle = 0;
+
+static void initTailServoSymmetry();
+static uint16_t getServoValueAtAngle(servoParam_t *servoConf, float angleInDegrees);
+static int16_t getLinearServoValue(servoParam_t *servoConf, int16_t servoValue);
+#endif
+
 void mixerUseConfigs(
 #ifdef USE_SERVOS
         servoParam_t *servoConfToUse,
@@ -401,6 +418,9 @@ void mixerInit(mixerMode_e mixerMode, motorMixer_t *initialCustomMotorMixers, se
     for (uint8_t i = 0; i < MAX_SUPPORTED_SERVOS; i++) {
         servo[i] = DEFAULT_SERVO_MIDDLE;
     }
+#ifdef USE_SERVOS
+    initTailServoSymmetry();
+#endif
 }
 #else
 void mixerInit(mixerMode_e mixerMode, motorMixer_t *initialCustomMixers)
@@ -751,6 +771,12 @@ STATIC_UNIT_TESTED void servoMixer(void)
     for (i = 0; i < MAX_SUPPORTED_SERVOS; i++) {
         servo[i] = ((int32_t)servoConf[i].rate * servo[i]) / 100L;
         servo[i] += determineServoMiddleOrForwardFromChannel(i);
+
+    }
+
+    if (ARMING_FLAG(ARMED))
+    {
+        servo[SERVO_RUDDER] = getLinearServoValue(&servoConf[0], servo[SERVO_RUDDER]);
     }
 }
 #endif
@@ -1010,3 +1036,103 @@ void filterServos(void)
 #endif
 }
 
+#ifdef USE_SERVOS
+void initTailServoSymmetry()
+{
+    tailServoThrustFactor = mixerConfig->tri_tail_motor_thrustfactor / 10.0f;
+    tailServoMaxAngle = mixerConfig->tri_servo_angle_at_max / 10.0f;
+
+    // Find the maximum yaw axis force we can produce
+    tailServoMaxYaw = -tailServoThrustFactor *
+            cosf((DEGREES_TO_RADIANS(TAIL_SERVO_ANGLE_MID_DEGREES + tailServoMaxAngle))) -
+            sinf(DEGREES_TO_RADIANS(TAIL_SERVO_ANGLE_MID_DEGREES + tailServoMaxAngle));
+}
+
+uint16_t getServoValueAtAngle(servoParam_t *servoConf, float angleInDegrees)
+{
+    int16_t servoMid = servoConf->middle;
+    uint16_t servoValue;
+
+    if (angleInDegrees < TAIL_SERVO_ANGLE_MID_DEGREES)
+    {
+        int16_t servoMin = servoConf->min;
+        servoValue = (angleInDegrees - tailServoMaxAngle) /
+                    (TAIL_SERVO_ANGLE_MID_DEGREES - tailServoMaxAngle) *
+                    (servoMid - servoMin);
+        servoValue += servoMin;
+    }
+    else if (angleInDegrees > TAIL_SERVO_ANGLE_MID_DEGREES)
+    {
+        int16_t servoMax = servoConf->max;
+
+        servoValue = (angleInDegrees - TAIL_SERVO_ANGLE_MID_DEGREES) / tailServoMaxAngle *
+                            (servoMax - servoMid);
+        servoValue += servoMid;
+    }
+    else
+    {
+        servoValue = servoMid;
+    }
+
+    return servoValue;
+}
+
+int16_t getLinearServoValue(servoParam_t *servoConf, int16_t servoValue)
+{
+    float linearYawForceAtValue;
+    float correctedAngle;
+    int16_t servoMid = servoConf->middle;
+
+    // First find the yaw force at given servo value from a linear function
+    if (servoValue < servoMid)
+    {
+        int16_t servoMin = servoConf->min;
+        // Use linear interpolation
+        linearYawForceAtValue = -1.0f * ((float)(servoMid - servoValue) / (float)(servoMid - servoMin) * tailServoMaxYaw);
+    }
+    else if (servoValue > servoMid)
+    {
+        int16_t servoMax = servoConf->max;
+        linearYawForceAtValue = (float)(servoValue - servoMid) / (servoMax - servoMid) * tailServoMaxYaw;
+    }
+    else
+    {
+        linearYawForceAtValue = 0;
+    }
+
+    // Find the corresponding angle from real yaw force curve (-tailServoThrustFactor * cos(angle) - sin(angle)), use the first quadrant only (PI*0).
+    // Restricted to servo angles < ~50 degrees (depends on tailServoThrustFactor). Greater angles would require use of another solving function (see e.g. from Wolfram Alpha).
+    correctedAngle = RADIANS_TO_DEGREES(2 * (atanf((-1.0f * sqrtf(-1.0f * (linearYawForceAtValue*linearYawForceAtValue)+tailServoThrustFactor*tailServoThrustFactor+1)-1)/(linearYawForceAtValue-tailServoThrustFactor)) + (float)M_PI * 0));
+
+    return getServoValueAtAngle(servoConf, correctedAngle);
+}
+
+#if 0
+// Implemented this but wasn't needed. I'll leave it here for possible future use.
+float getServoAngleInDegrees(servoParam_t *servoConf, uint16_t servoValue)
+{
+    int16_t servoMid = servoConf->middle;
+    float servoAngle;
+
+    if (servoValue < servoMid)
+    {
+        int16_t servoMin = servoConf->min;
+        servoAngle = tailServoMaxAngle +
+                ((TAIL_SERVO_ANGLE_MID_DEGREES - tailServoMaxAngle)
+                        * ((float)(servoValue - servoMin) / (servoMid - servoMin)));
+    }
+    else if (servoValue > servoMid)
+    {
+        int16_t servoMax = servoConf->max;
+        servoAngle = (tailServoMaxAngle * ((float)(servoValue - servoMid) / (servoMax - servoMid)));
+        servoAngle += TAIL_SERVO_ANGLE_MID_DEGREES;
+    }
+    else
+    {
+        servoAngle = TAIL_SERVO_ANGLE_MID_DEGREES;
+    }
+
+    return servoAngle;
+}
+#endif
+#endif // USE_SERVOS
