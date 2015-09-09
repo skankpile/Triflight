@@ -758,7 +758,10 @@ STATIC_UNIT_TESTED void servoMixer(void)
 
     }
 
-    servo[SERVO_RUDDER] = getLinearServoValue(&servoConf[0], servo[SERVO_RUDDER]);
+    if (ARMING_FLAG(ARMED))
+    {
+        servo[SERVO_RUDDER] = getLinearServoValue(&servoConf[0], servo[SERVO_RUDDER]);
+    }
 }
 
 #endif
