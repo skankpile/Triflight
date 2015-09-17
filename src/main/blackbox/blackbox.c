@@ -352,6 +352,8 @@ static blackboxMainState_t* blackboxHistory[3];
 
 static bool blackboxModeActivationConditionPresent = false;
 
+extern float getVirtualServoAngle();
+
 static bool testBlackboxConditionUncached(FlightLogFieldCondition condition)
 {
     switch (condition) {
@@ -926,7 +928,7 @@ static void loadMainState(void)
 
 #ifdef USE_SERVOS
     //Tail servo for tricopters
-    blackboxCurrent->servo[5] = servo[5];
+    blackboxCurrent->servo[5] = getVirtualServoAngle() * 10;
 #endif
 }
 
