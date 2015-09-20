@@ -828,7 +828,7 @@ void mixTable(void)
         }
 
         const float futureServoAngle = constrainf(servoAngle + angleDiff, TRI_TAIL_SERVO_ANGLE_MID_DEGREES - tailServoMaxAngle, TRI_TAIL_SERVO_ANGLE_MID_DEGREES + tailServoMaxAngle);
-        currentMixer[0].throttle = getPitchCorrectionAtTailAngle(futureServoAngle);
+        currentMixer[0].throttle = 1.0f + (getPitchCorrectionAtTailAngle(futureServoAngle) - 1.0f) * 0.60f;
     }
 
     // motors for non-servo mixes
