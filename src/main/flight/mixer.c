@@ -65,10 +65,6 @@
 
 #endif
 
-#define DEGREES_TO_RADIANS(degrees) ((degrees) * (float)M_PI / 180.0f)
-#define RADIANS_TO_DEGREES(radians) ((radians) * 180.0f / (float)M_PI)
-
-
 //#define MIXER_DEBUG
 
 uint8_t motorCount;
@@ -989,7 +985,7 @@ void initTailServoSymmetry()
     int32_t angle = TRI_TAIL_SERVO_ANGLE_MID_DEGREES - TRI_TAIL_SERVO_MAX_ANGLE;
     for (int32_t i = 0; i < TRI_YAW_FORCE_CURVE_SIZE; i++)
     {
-        yawForceCurve[i] = (-tailServoThrustFactor * cosf(DEGREES_TO_RADIANS(angle)) - sinf(DEGREES_TO_RADIANS(angle)) * getPitchCorrectionAtTailAngle(angle));
+        yawForceCurve[i] = (-tailServoThrustFactor * cos_approx(DEGREES_TO_RADIANS(angle)) - sin_approx(DEGREES_TO_RADIANS(angle)) * getPitchCorrectionAtTailAngle(angle));
         // Only calculate the top forces in the configured angle range
         if ((angle >= minAngle) && (angle < maxAngle))
         {
@@ -1033,7 +1029,7 @@ uint16_t getServoValueAtAngle(servoParam_t *servoConf, float angleInDegrees)
 
 float getPitchCorrectionAtTailAngle(float angle)
 {
-    return 1 / (sinf(DEGREES_TO_RADIANS(angle)) - cosf(DEGREES_TO_RADIANS(angle)) / tailServoThrustFactor);
+    return 1 / (sin_approx(DEGREES_TO_RADIANS(angle)) - cos_approx(DEGREES_TO_RADIANS(angle)) / tailServoThrustFactor);
 }
 
 float getAngleFromYawCurveAtForce(float force)

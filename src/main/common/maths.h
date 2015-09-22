@@ -34,6 +34,9 @@
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define ABS(x) ((x) > 0 ? (x) : -(x))
 
+#define DEGREES_TO_RADIANS(degrees) ((degrees) * (float)M_PI / 180.0f)
+#define RADIANS_TO_DEGREES(radians) ((radians) * 180.0f / (float)M_PI)
+
 typedef struct stdev_t
 {
     float m_oldM, m_newM, m_oldS, m_newS;
