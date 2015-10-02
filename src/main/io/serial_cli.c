@@ -432,7 +432,8 @@ const clivalue_t valueTable[] = {
     { "servo_lowpass_freq",         VAR_INT16  | MASTER_VALUE, &masterConfig.mixerConfig.servo_lowpass_freq, 10, 400},
     { "servo_lowpass_enable",       VAR_INT8   | MASTER_VALUE, &masterConfig.mixerConfig.servo_lowpass_enable, 0, 1 },
     { "tri_servo_angle_at_max",     VAR_INT16  | MASTER_VALUE, &masterConfig.mixerConfig.tri_servo_angle_at_max, 0, 500 },
-    { "tri_tail_motor_thrustfactor",VAR_INT16   | MASTER_VALUE, &masterConfig.mixerConfig.tri_tail_motor_thrustfactor, -200, 200 },
+    { "tri_tail_motor_thrustfactor",VAR_INT16  | MASTER_VALUE, &masterConfig.mixerConfig.tri_tail_motor_thrustfactor, -200, 200 },
+    { "tri_tail_servo_speed",       VAR_INT16  | MASTER_VALUE, &masterConfig.mixerConfig.tri_tail_servo_speed, 0, 1000 },
 #endif
 
     { "default_rate_profile",       VAR_UINT8  | PROFILE_VALUE , &masterConfig.profile[0].defaultRateProfileIndex, 0, MAX_CONTROL_RATE_PROFILE_COUNT - 1 },
