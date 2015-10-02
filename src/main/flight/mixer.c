@@ -56,8 +56,6 @@
 
 #ifdef USE_SERVOS
 #define TRI_TAIL_SERVO_ANGLE_MID_DEGREES (90.0f)
-//BMS-210DMH: 0.15 sec / 60 degrees with no load
-#define TRI_TAIL_SERVO_SPEED_DEG_PER_SEC 225 // (60.0f / 0.15f)
 #define TRI_YAW_FORCE_CURVE_SIZE (100)
 #define TRI_TAIL_SERVO_MAX_ANGLE (50.0f)
 
@@ -1197,7 +1195,7 @@ float getServoAngleInDegrees(servoParam_t *servoConf, uint16_t servoValue)
 void virtualServoStep(float dT, servoParam_t *servoConf, uint16_t servoValue)
 {
     const float angleSetPoint = getServoAngleInDegrees(servoConf, servoValue);
-    const float dA = dT * TRI_TAIL_SERVO_SPEED_DEG_PER_SEC; // Max change of an angle since last check
+    const float dA = dT * mixerConfig->tri_tail_servo_speed; // Max change of an angle since last check
     if ( ABS(virtualServoAngle - angleSetPoint) < dA )
     {
         // At set-point after this moment

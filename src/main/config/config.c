@@ -307,8 +307,9 @@ static void resetMixerConfig(mixerConfig_t *mixerConfig) {
 #ifdef USE_SERVOS
     mixerConfig->tri_unarmed_servo = 1;
     mixerConfig->servo_lowpass_freq = 400.0f;
-    mixerConfig->tri_servo_angle_at_max = 300;
+    mixerConfig->tri_servo_angle_at_max = 400;
     mixerConfig->tri_tail_motor_thrustfactor = 100;
+    mixerConfig->tri_tail_servo_speed = 225; // Default for BMS-210DMH at 5V
 #endif
 }
 
