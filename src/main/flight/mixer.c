@@ -54,10 +54,12 @@
 #include "config/runtime_config.h"
 #include "config/config.h"
 
+#define INT_PRECISION               (1024)
+
 #ifdef USE_SERVOS
-#define TRI_TAIL_SERVO_ANGLE_MID_DEGREES (90.0f)
-#define TRI_YAW_FORCE_CURVE_SIZE (100)
-#define TRI_TAIL_SERVO_MAX_ANGLE (50.0f)
+#define TRI_TAIL_SERVO_ANGLE_MID_DD (900)
+#define TRI_YAW_FORCE_CURVE_SIZE    (100)
+#define TRI_TAIL_SERVO_MAX_ANGLE_DD (500)
 
 // These need to be configurable
 #define TRI_TAIL_MOTOR_CURVE_MAX_PHASE_SHIFT_DEGREES    15.0f
@@ -340,18 +342,18 @@ static motorMixer_t *customMixers;
 #ifdef USE_SERVOS
 extern float dT;
 
-static float tailServoMaxYaw = 0;
+static int16_t tailServoMaxYawForce = 0;
 static float tailServoThrustFactor = 0;
-static float tailServoMaxAngle = 0;
-static float virtualServoAngle = TRI_TAIL_SERVO_ANGLE_MID_DEGREES;
-static float yawForceCurve[TRI_YAW_FORCE_CURVE_SIZE];
+static int16_t tailServoMaxAngle_DD = 0;
+static float virtualServoAngle_D = TRI_TAIL_SERVO_ANGLE_MID_DD;
+static int16_t yawForceCurve[TRI_YAW_FORCE_CURVE_SIZE];
 
 static void initTailServoSymmetry();
-static uint16_t getServoValueAtAngle(servoParam_t *servoConf, float angleInDegrees);
-static int16_t getLinearServoValue(servoParam_t *servoConf, int16_t servoValue);
+static uint16_t getServoValueAtAngle(servoParam_t *servoConf, uint16_t angle_DD);
+static uint16_t getLinearServoValue(servoParam_t *servoConf, uint16_t servoValue);
 static float getPitchCorrectionAtTailAngle(float angle);
-static float getAngleFromYawCurveAtForce(float force);
-static float getServoAngleInDegrees(servoParam_t *servoConf, uint16_t servoValue);
+static uint16_t getAngleFromYawCurveAtForce(int16_t force);
+static uint16_t getServoAngleInDeciDegrees(servoParam_t *servoConf, uint16_t servoValue);
 static void virtualServoStep(float dT, servoParam_t *servoConf, uint16_t servoValue);
 float getVirtualServoAngleInDegrees();
 #endif
@@ -832,17 +834,17 @@ void mixTable(void)
         // Adjust tail motor speed based on servo angle. Check how much to adjust speed from pitch force curve based on servo angle.
         // Take motor speed up lag into account by shifting the phase of the curve
         // Not taking into account the motor braking lag (yet)
-        const float servoAngle = getVirtualServoAngleInDegrees();
-        const float servoSetpointAngle = getServoAngleInDegrees(&servoConf[0], servo[SERVO_RUDDER]);
+        const float servoAngle_D = getVirtualServoAngleInDegrees();
+        const float servoSetpointAngle_D = getServoAngleInDeciDegrees(&servoConf[0], servo[SERVO_RUDDER]) / 10.0f;
 
-        float angleDiff = servoSetpointAngle - servoAngle;
-        if (ABS(angleDiff) > TRI_TAIL_MOTOR_CURVE_MAX_PHASE_SHIFT_DEGREES)
+        float angleDiff_D = servoSetpointAngle_D - servoAngle_D;
+        if (ABS(angleDiff_D) > TRI_TAIL_MOTOR_CURVE_MAX_PHASE_SHIFT_DEGREES)
         {
-            angleDiff = TRI_TAIL_MOTOR_CURVE_MAX_PHASE_SHIFT_DEGREES * angleDiff / ABS(angleDiff);
+            angleDiff_D = TRI_TAIL_MOTOR_CURVE_MAX_PHASE_SHIFT_DEGREES * angleDiff_D / ABS(angleDiff_D);
         }
 
         const float futureServoAngle = constrainf(servoAngle + angleDiff, TRI_TAIL_SERVO_ANGLE_MID_DEGREES - tailServoMaxAngle, TRI_TAIL_SERVO_ANGLE_MID_DEGREES + tailServoMaxAngle);
-        currentMixer[0].throttle = 1.0f + (getPitchCorrectionAtTailAngle(futureServoAngle) - 1.0f) * 0.60f;
+        currentMixer[0].throttle = getPitchCorrectionAtTailAngle(futureServoAngle);
     }
 
     if (IS_RC_MODE_ACTIVE(BOXAIRMODE)) {
@@ -1088,48 +1090,49 @@ void filterServos(void)
 void initTailServoSymmetry()
 {
     tailServoThrustFactor = mixerConfig->tri_tail_motor_thrustfactor / 10.0f;
-    tailServoMaxAngle = mixerConfig->tri_servo_angle_at_max / 10.0f;
+    tailServoMaxAngle_DD = mixerConfig->tri_servo_angle_at_max;
 
-    const int32_t minAngle = TRI_TAIL_SERVO_ANGLE_MID_DEGREES - tailServoMaxAngle;
-    const int32_t maxAngle = TRI_TAIL_SERVO_ANGLE_MID_DEGREES + tailServoMaxAngle;
-    float maxNegForce = 0;
-    float maxPosForce = 0;
+    const int32_t minAngle_DD = TRI_TAIL_SERVO_ANGLE_MID_DD - tailServoMaxAngle_DD;
+    const int32_t maxAngle_DD = TRI_TAIL_SERVO_ANGLE_MID_DD + tailServoMaxAngle_DD;
+    int16_t maxNegForce = 0;
+    int16_t maxPosForce = 0;
 
-    int32_t angle = TRI_TAIL_SERVO_ANGLE_MID_DEGREES - TRI_TAIL_SERVO_MAX_ANGLE;
+    int32_t angle_DD = TRI_TAIL_SERVO_ANGLE_MID_DD - TRI_TAIL_SERVO_MAX_ANGLE_DD;
     for (int32_t i = 0; i < TRI_YAW_FORCE_CURVE_SIZE; i++)
     {
-        yawForceCurve[i] = (-tailServoThrustFactor * cos_approx(DEGREES_TO_RADIANS(angle)) - sin_approx(DEGREES_TO_RADIANS(angle)) * getPitchCorrectionAtTailAngle(angle));
+        const float f_angle = angle_DD / 10.0f;
+        yawForceCurve[i] = (uint16_t) 1000 * (-tailServoThrustFactor * cosf(DEGREES_TO_RADIANS(f_angle)) - sinf(DEGREES_TO_RADIANS(f_angle)) * getPitchCorrectionAtTailAngle(f_angle));
         // Only calculate the top forces in the configured angle range
-        if ((angle >= minAngle) && (angle < maxAngle))
+        if ((angle_DD >= minAngle_DD) && (angle_DD < maxAngle_DD))
         {
             maxNegForce = MIN(yawForceCurve[i], maxNegForce);
             maxPosForce = MAX(yawForceCurve[i], maxPosForce);
         }
-        angle++;
+        angle_DD += 10;
     }
 
-    tailServoMaxYaw = MIN(ABS(maxNegForce), ABS(maxPosForce));
+    tailServoMaxYawForce = MIN(ABS(maxNegForce), ABS(maxPosForce));
 }
 
-uint16_t getServoValueAtAngle(servoParam_t *servoConf, float angleInDegrees)
+uint16_t getServoValueAtAngle(servoParam_t *servoConf, uint16_t angle_DD)
 {
     int16_t servoMid = servoConf->middle;
     uint16_t servoValue;
 
-    if (angleInDegrees < TRI_TAIL_SERVO_ANGLE_MID_DEGREES)
+    if (angle_DD < TRI_TAIL_SERVO_ANGLE_MID_DD)
     {
         int16_t servoMin = servoConf->min;
-        servoValue = (angleInDegrees - tailServoMaxAngle) /
-                    (TRI_TAIL_SERVO_ANGLE_MID_DEGREES - tailServoMaxAngle) *
-                    (servoMid - servoMin);
+        servoValue = (angle_DD - tailServoMaxAngle_DD) * INT_PRECISION /
+                    (TRI_TAIL_SERVO_ANGLE_MID_DD - tailServoMaxAngle_DD) *
+                    (servoMid - servoMin) / INT_PRECISION;
         servoValue += servoMin;
     }
-    else if (angleInDegrees > TRI_TAIL_SERVO_ANGLE_MID_DEGREES)
+    else if (angle_DD > TRI_TAIL_SERVO_ANGLE_MID_DD)
     {
         int16_t servoMax = servoConf->max;
 
-        servoValue = (angleInDegrees - TRI_TAIL_SERVO_ANGLE_MID_DEGREES) / tailServoMaxAngle *
-                            (servoMax - servoMid);
+        servoValue = (angle_DD - TRI_TAIL_SERVO_ANGLE_MID_DD) * INT_PRECISION / tailServoMaxAngle_DD *
+                            (servoMax - servoMid) / INT_PRECISION;
         servoValue += servoMid;
     }
     else
@@ -1145,15 +1148,15 @@ float getPitchCorrectionAtTailAngle(float angle)
     return 1 / (sin_approx(DEGREES_TO_RADIANS(angle)) - cos_approx(DEGREES_TO_RADIANS(angle)) / tailServoThrustFactor);
 }
 
-float getAngleFromYawCurveAtForce(float force)
+uint16_t getAngleFromYawCurveAtForce(int16_t force)
 {
     if (force < yawForceCurve[0]) // No force that low
     {
-        return TRI_TAIL_SERVO_ANGLE_MID_DEGREES - TRI_TAIL_SERVO_MAX_ANGLE;
+        return TRI_TAIL_SERVO_ANGLE_MID_DD - TRI_TAIL_SERVO_MAX_ANGLE_DD;
     }
     else if (!(force < yawForceCurve[TRI_YAW_FORCE_CURVE_SIZE - 1])) // No force that high
     {
-        return TRI_TAIL_SERVO_ANGLE_MID_DEGREES + TRI_TAIL_SERVO_MAX_ANGLE;
+        return TRI_TAIL_SERVO_ANGLE_MID_DD + TRI_TAIL_SERVO_MAX_ANGLE_DD;
     }
     // Binary search: yawForceCurve[lower] <= force, yawForceCurve[higher] > force
     int32_t lower = 0, higher = TRI_YAW_FORCE_CURVE_SIZE - 1;
@@ -1170,49 +1173,49 @@ float getAngleFromYawCurveAtForce(float force)
         }
     }
     // Interpolating
-    return TRI_TAIL_SERVO_ANGLE_MID_DEGREES - TRI_TAIL_SERVO_MAX_ANGLE + lower + (force - yawForceCurve[lower]) / (yawForceCurve[higher] - yawForceCurve[lower]);
+    return TRI_TAIL_SERVO_ANGLE_MID_DD - TRI_TAIL_SERVO_MAX_ANGLE_DD + lower * 10 + (force - yawForceCurve[lower]) * 1000 / (yawForceCurve[higher] - yawForceCurve[lower]) / 100;
 }
 
-int16_t getLinearServoValue(servoParam_t *servoConf, int16_t servoValue)
+uint16_t getLinearServoValue(servoParam_t *servoConf, uint16_t servoValue)
 {
     const int16_t servoMid = servoConf->middle;
     // First find the yaw force at given servo value from a linear curve
-    const int16_t range = (servoValue < servoMid) ? servoMid - servoConf->min : servoConf->max - servoMid;
-    const float linearYawForceAtValue = (float)(servoValue - servoMid) / range * tailServoMaxYaw;
-    const float correctedAngle = getAngleFromYawCurveAtForce(linearYawForceAtValue);
-    return getServoValueAtAngle(servoConf, correctedAngle);
+    const int32_t range = (servoValue < servoMid) ? servoMid - servoConf->min : servoConf->max - servoMid;
+    const int32_t linearYawForceAtValue = (servoValue - servoMid) * INT_PRECISION / range * tailServoMaxYawForce / INT_PRECISION;
+    const int16_t correctedAngle_DD = getAngleFromYawCurveAtForce(linearYawForceAtValue);
+    return getServoValueAtAngle(servoConf, correctedAngle_DD);
 }
 
-float getServoAngleInDegrees(servoParam_t *servoConf, uint16_t servoValue)
+uint16_t getServoAngleInDeciDegrees(servoParam_t *servoConf, uint16_t servoValue)
 {
     const int16_t midValue = servoConf->middle;
     const int16_t endValue = servoValue < midValue ? servoConf->min : servoConf->max;
-    const float endAngle = servoValue < midValue ? TRI_TAIL_SERVO_ANGLE_MID_DEGREES - tailServoMaxAngle : TRI_TAIL_SERVO_ANGLE_MID_DEGREES + tailServoMaxAngle;
-    const float servoAngle = (endAngle - TRI_TAIL_SERVO_ANGLE_MID_DEGREES) * (servoValue - midValue) / (endValue - midValue) + TRI_TAIL_SERVO_ANGLE_MID_DEGREES;
+    const int16_t endAngle = servoValue < midValue ? TRI_TAIL_SERVO_ANGLE_MID_DD - tailServoMaxAngle_DD : TRI_TAIL_SERVO_ANGLE_MID_DD + tailServoMaxAngle_DD;
+    const int16_t servoAngle = (endAngle - TRI_TAIL_SERVO_ANGLE_MID_DD) * (servoValue - midValue) * INT_PRECISION / (endValue - midValue) / INT_PRECISION + TRI_TAIL_SERVO_ANGLE_MID_DD;
     return servoAngle;
 }
 
 void virtualServoStep(float dT, servoParam_t *servoConf, uint16_t servoValue)
 {
-    const float angleSetPoint = getServoAngleInDegrees(servoConf, servoValue);
+    const float angleSetPoint = getServoAngleInDeciDegrees(servoConf, servoValue) / 10.0f;
     const float dA = dT * mixerConfig->tri_tail_servo_speed; // Max change of an angle since last check
-    if ( ABS(virtualServoAngle - angleSetPoint) < dA )
+    if ( ABS(virtualServoAngle_D - angleSetPoint) < dA )
     {
         // At set-point after this moment
-        virtualServoAngle = angleSetPoint;
+        virtualServoAngle_D = angleSetPoint;
     }
-    else if (virtualServoAngle < angleSetPoint)
+    else if (virtualServoAngle_D < angleSetPoint)
     {
-        virtualServoAngle += dA;
+        virtualServoAngle_D += dA;
     }
     else // virtualServoAngle > angleSetPoint
     {
-        virtualServoAngle -= dA;
+        virtualServoAngle_D -= dA;
     }
 }
 
 float getVirtualServoAngleInDegrees()
 {
-    return virtualServoAngle;
+    return virtualServoAngle_D;
 }
 #endif // USE_SERVOS
