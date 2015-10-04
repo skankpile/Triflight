@@ -2482,7 +2482,7 @@ static void cliVersion(char *cmdline)
 {
     UNUSED(cmdline);
 
-    cliPrintf("# Cleanflight/%s %s %s / %s (%s)",
+    cliPrintf("# TriFlight 0.2/%s %s %s / %s (%s)",
         targetName,
         FC_VERSION_STRING,
         buildDate,
