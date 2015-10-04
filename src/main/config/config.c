@@ -146,7 +146,7 @@ static void resetAccelerometerTrims(flightDynamicsTrims_t *accelerometerTrims)
 
 void resetPidProfile(pidProfile_t *pidProfile)
 {
-    pidProfile->pidController = 1;
+    pidProfile->pidController = 2;
 
     pidProfile->P8[ROLL] = 40;
     pidProfile->I8[ROLL] = 30;
@@ -180,17 +180,17 @@ void resetPidProfile(pidProfile_t *pidProfile)
     pidProfile->yaw_p_limit = YAW_P_LIMIT_MAX;
     pidProfile->gyro_soft_lpf = 0;   // no filtering by default
     pidProfile->yaw_pterm_cut_hz = 0;
-    pidProfile->dterm_cut_hz = 0;
+    pidProfile->dterm_cut_hz = 40;
 
-    pidProfile->P_f[ROLL] = 1.4f;     // new PID with preliminary defaults test carefully
-    pidProfile->I_f[ROLL] = 0.4f;
-    pidProfile->D_f[ROLL] = 0.03f;
+    pidProfile->P_f[ROLL] = 1.5f;     // new PID with preliminary defaults test carefully
+    pidProfile->I_f[ROLL] = 0.08f;
+    pidProfile->D_f[ROLL] = 0.042f;
     pidProfile->P_f[PITCH] = 1.4f;
-    pidProfile->I_f[PITCH] = 0.4f;
-    pidProfile->D_f[PITCH] = 0.03f;
-    pidProfile->P_f[YAW] = 3.5f;
-    pidProfile->I_f[YAW] = 0.4f;
-    pidProfile->D_f[YAW] = 0.01f;
+    pidProfile->I_f[PITCH] = 0.09f;
+    pidProfile->D_f[PITCH] = 0.035f;
+    pidProfile->P_f[YAW] = 4.1f;
+    pidProfile->I_f[YAW] = 0.9f;
+    pidProfile->D_f[YAW] = 0.092f;
     pidProfile->A_level = 5.0f;
     pidProfile->H_level = 3.0f;
     pidProfile->H_sensitivity = 75;
@@ -310,25 +310,24 @@ void resetSerialConfig(serialConfig_t *serialConfig)
 }
 
 static void resetControlRateConfig(controlRateConfig_t *controlRateConfig) {
-    controlRateConfig->rcRate8 = 90;
-    controlRateConfig->rcExpo8 = 65;
+    controlRateConfig->rcRate8 = 110;
+    controlRateConfig->rcExpo8 = 90;
     controlRateConfig->thrMid8 = 50;
     controlRateConfig->thrExpo8 = 0;
-    controlRateConfig->dynThrPID = 0;
-    controlRateConfig->tpa_yaw_rate = 100;
+    controlRateConfig->dynThrPID = 50;
+    controlRateConfig->tpa_yaw_rate = 90;
     controlRateConfig->rcYawExpo8 = 0;
     controlRateConfig->tpa_breakpoint = 1500;
     controlRateConfig->tpa_yaw_breakpoint = 1500;
 
-    for (uint8_t axis = 0; axis < FLIGHT_DYNAMICS_INDEX_COUNT; axis++) {
-        controlRateConfig->rates[axis] = 0;
-    }
-
+    controlRateConfig->rates[FD_ROLL] = 40;
+    controlRateConfig->rates[FD_PITCH] = 40;
+    controlRateConfig->rates[FD_YAW] = 55;
 }
 
 void resetRcControlsConfig(rcControlsConfig_t *rcControlsConfig) {
-    rcControlsConfig->deadband = 0;
-    rcControlsConfig->yaw_deadband = 0;
+    rcControlsConfig->deadband = 5;
+    rcControlsConfig->yaw_deadband = 5;
     rcControlsConfig->alt_hold_deadband = 40;
     rcControlsConfig->alt_hold_fast_change = 1;
 }
@@ -388,7 +387,7 @@ static void resetConf(void)
     setControlRateProfile(0);
 
     masterConfig.version = EEPROM_CONF_VERSION;
-    masterConfig.mixerMode = MIXER_QUADX;
+    masterConfig.mixerMode = MIXER_TRI;
     featureClearAll();
 #if defined(CJMCU) || defined(SPARKY) || defined(COLIBRI_RACE) || defined(MOTOLAB)
     featureSet(FEATURE_RX_PPM);
