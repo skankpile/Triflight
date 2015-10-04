@@ -346,6 +346,7 @@ const clivalue_t valueTable[] = {
 
     { "motor_pwm_rate",             VAR_UINT16 | MASTER_VALUE,  &masterConfig.motor_pwm_rate, 50, 32000 },
     { "servo_pwm_rate",             VAR_UINT16 | MASTER_VALUE,  &masterConfig.servo_pwm_rate, 50, 498 },
+    { "enable_fast_pwm",            VAR_UINT8  | MASTER_VALUE,  &masterConfig.use_fast_pwm, 0, 1 },
 
     { "retarded_arm",               VAR_UINT8  | MASTER_VALUE,  &masterConfig.retarded_arm, 0, 1 },
     { "disarm_kill_switch",         VAR_UINT8  | MASTER_VALUE,  &masterConfig.disarm_kill_switch, 0, 1 },
@@ -531,6 +532,8 @@ const clivalue_t valueTable[] = {
     { "magzero_x",                  VAR_INT16  | MASTER_VALUE, &masterConfig.magZero.raw[X], -32768, 32767 },
     { "magzero_y",                  VAR_INT16  | MASTER_VALUE, &masterConfig.magZero.raw[Y], -32768, 32767 },
     { "magzero_z",                  VAR_INT16  | MASTER_VALUE, &masterConfig.magZero.raw[Z], -32768, 32767 },
+
+    { "beeper_off_flags",           VAR_UINT32  | MASTER_VALUE, &masterConfig.beeper_off.flags, BEEPER_OFF_FLAGS_MIN, BEEPER_OFF_FLAGS_MAX },
 };
 
 #define VALUE_COUNT (sizeof(valueTable) / sizeof(clivalue_t))

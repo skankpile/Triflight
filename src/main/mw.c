@@ -20,6 +20,7 @@
 #include <stdint.h>
 #include <math.h>
 
+#include "debug.h"
 #include "platform.h"
 
 #include "common/maths.h"
@@ -88,12 +89,14 @@ enum {
     ALIGN_MAG = 2
 };
 
+//#define DEBUG_JITTER 3
+
 /* VBAT monitoring interval (in microseconds) - 1s*/
 #define VBATINTERVAL (6 * 3500)       
 /* IBat monitoring interval (in microseconds) - 6 default looptimes */
 #define IBATINTERVAL (6 * 3500)
 #define GYRO_WATCHDOG_DELAY 100  // Watchdog for boards without interrupt for gyro
-#define PREVENT_RX_PROCESS_PRE_LOOP_TRIGGER 90 // Prevent RX processing before expected loop trigger
+#define PREVENT_RX_PROCESS_PRE_LOOP_TRIGGER 80 // Prevent RX processing before expected loop trigger
 
 uint32_t currentTime = 0;
 uint32_t previousTime = 0;
@@ -289,7 +292,7 @@ void annexCode(void)
 
         if (ibatTimeSinceLastServiced >= IBATINTERVAL) {
             ibatLastServiced = currentTime;
-            updateCurrentMeter((ibatTimeSinceLastServiced / 1000), &masterConfig.rxConfig, masterConfig.flight3DConfig.deadband3d_throttle);
+            updateCurrentMeter(ibatTimeSinceLastServiced, &masterConfig.rxConfig, masterConfig.flight3DConfig.deadband3d_throttle);
         }
     }
 
@@ -752,6 +755,7 @@ void filterRc(void){
 void loop(void)
 {
     static uint32_t loopTime;
+    static bool haveProcessedRxOnceBeforeLoop = false;
 
 #if defined(BARO) || defined(SONAR)
     static bool haveProcessedAnnexCodeOnce = false;
@@ -759,9 +763,10 @@ void loop(void)
 
     updateRx(currentTime);
 
-    if (shouldProcessRx(currentTime) && !((int32_t)(currentTime - (loopTime - PREVENT_RX_PROCESS_PRE_LOOP_TRIGGER)) >= 0)) {
+   if (shouldProcessRx(currentTime) && (!((int32_t)(currentTime - (loopTime - PREVENT_RX_PROCESS_PRE_LOOP_TRIGGER)) >= 0) || (haveProcessedRxOnceBeforeLoop))) {
         processRx();
         isRXDataNew = true;
+        haveProcessedRxOnceBeforeLoop = true;
 
 #ifdef BARO
         // the 'annexCode' initialses rcCommand, updateAltHoldState depends on valid rcCommand data.
@@ -799,13 +804,32 @@ void loop(void)
     if (gyroSyncCheckUpdate() || (int32_t)(currentTime - (loopTime + GYRO_WATCHDOG_DELAY)) >= 0) {
 
         loopTime = currentTime + targetLooptime;
-        imuUpdate(&currentProfile->accelerometerTrims);
 
+        haveProcessedRxOnceBeforeLoop = false;
+
+        // Determine current flight mode. When no acc needed in pid calculations we should only read gyro to reduce latency
+        if (!flightModeFlags) {
+            imuUpdate(&currentProfile->accelerometerTrims, ONLY_GYRO);  // When no level modes active read only gyro
+        } else {
+            imuUpdate(&currentProfile->accelerometerTrims, ACC_AND_GYRO);  // When level modes active read gyro and acc
+        }
 
         // Measure loop rate just after reading the sensors
         currentTime = micros();
         cycleTime = (int32_t)(currentTime - previousTime);
         previousTime = currentTime;
+
+#ifdef DEBUG_JITTER
+        static uint32_t previousCycleTime;
+
+		if (previousCycleTime > cycleTime) {
+		    debug[DEBUG_JITTER] = previousCycleTime - cycleTime;
+		} else {
+	        debug[DEBUG_JITTER] = cycleTime - previousCycleTime;
+		}
+		previousCycleTime = cycleTime;
+#endif
+
 
         dT = (float)targetLooptime * 0.000001f;
 
@@ -881,6 +905,11 @@ void loop(void)
 
         if (motorControlEnable) {
             writeMotors();
+        }
+
+        // When no level modes active read acc after motor update
+        if (!flightModeFlags) {
+            imuUpdate(&currentProfile->accelerometerTrims, ONLY_ACC);
         }
 
 #ifdef BLACKBOX

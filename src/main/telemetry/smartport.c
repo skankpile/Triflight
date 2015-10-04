@@ -30,6 +30,7 @@
 #include "rx/rx.h"
 #include "rx/msp.h"
 
+#include "io/beeper.h"
 #include "io/escservo.h"
 #include "io/rc_controls.h"
 #include "io/gps.h"
@@ -331,7 +332,7 @@ void handleSmartPortTelemetry(void)
                 break;
             case FSSP_DATAID_CURRENT    :
                 if (feature(FEATURE_CURRENT_METER)) {
-                    smartPortSendPackage(id, amperage); // given in 10mA steps, unknown requested unit
+                    smartPortSendPackage(id, amperage / 10); // given in 10mA steps, unknown requested unit
                     smartPortHasRequest = 0;
                 }
                 break;

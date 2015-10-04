@@ -41,10 +41,12 @@
 #include "drivers/gpio.h"
 #include "drivers/timer.h"
 #include "drivers/pwm_rx.h"
+#include "drivers/gyro_sync.h"
 
 #include "rx/rx.h"
 #include "rx/msp.h"
 
+#include "io/beeper.h"
 #include "io/escservo.h"
 #include "io/rc_controls.h"
 #include "io/gps.h"
@@ -224,6 +226,9 @@ static const char * const boardIdentifier = TARGET_BOARD_IDENTIFIER;
 #define MSP_DATAFLASH_SUMMARY           70 //out message - get description of dataflash chip
 #define MSP_DATAFLASH_READ              71 //out message - get content of dataflash chip
 #define MSP_DATAFLASH_ERASE             72 //in message - erase dataflash chip
+
+#define MSP_LOOP_TIME                   73 //out message         Returns FC cycle time i.e looptime parameter
+#define MSP_SET_LOOP_TIME               74 //in message          Sets FC cycle time i.e looptime parameter
 
 #define MSP_FAILSAFE_CONFIG             75 //out message         Returns FC Fail-Safe settings
 #define MSP_SET_FAILSAFE_CONFIG         76 //in message          Sets FC Fail-Safe settings
@@ -926,6 +931,10 @@ static bool processOutCommand(uint8_t cmdMSP)
         serialize8(masterConfig.auto_disarm_delay); 
         serialize8(masterConfig.disarm_kill_switch);
         break;
+    case MSP_LOOP_TIME:
+        headSerialReply(2);
+        serialize16((uint16_t)targetLooptime);
+        break;
     case MSP_RC_TUNING:
         headSerialReply(11);
         serialize8(currentControlRateProfile->rcRate8);
@@ -1329,9 +1338,13 @@ static bool processInCommand(void)
             if (channelCount > MAX_SUPPORTED_RC_CHANNEL_COUNT) {
                 headSerialError(0);
             } else {
-                for (i = 0; i < channelCount; i++)
-                    rcData[i] = read16();
-                rxMspFrameRecieve();
+                uint16_t frame[MAX_SUPPORTED_RC_CHANNEL_COUNT];
+
+                for (i = 0; i < channelCount; i++) {
+                    frame[i] = read16();
+                }
+
+                rxMspFrameReceive(frame, channelCount);
             }
         }
         break;
@@ -1342,6 +1355,8 @@ static bool processInCommand(void)
     case MSP_SET_ARMING_CONFIG:
         masterConfig.auto_disarm_delay = read8();
         masterConfig.disarm_kill_switch = read8();
+        break;
+    case MSP_SET_LOOP_TIME:
         break;
     case MSP_SET_PID_CONTROLLER:
         currentProfile->pidProfile.pidController = read8();
