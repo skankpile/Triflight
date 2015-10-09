@@ -362,7 +362,7 @@ static bool blackboxModeActivationConditionPresent = false;
 static bool blackboxIsOnlyLoggingIntraframes() {
     return masterConfig.blackbox_rate_num == 1 && masterConfig.blackbox_rate_denom == 32;
 }
-extern float getVirtualServoAngle();
+extern int16_t getVirtualServoAngle();
 
 static bool testBlackboxConditionUncached(FlightLogFieldCondition condition)
 {
