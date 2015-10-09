@@ -843,7 +843,7 @@ void mixTable(void)
             angleDiff_D = TRI_TAIL_MOTOR_CURVE_MAX_PHASE_SHIFT_DEGREES * angleDiff_D / ABS(angleDiff_D);
         }
 
-        const float futureServoAngle = constrainf(servoAngle + angleDiff, TRI_TAIL_SERVO_ANGLE_MID_DEGREES - tailServoMaxAngle, TRI_TAIL_SERVO_ANGLE_MID_DEGREES + tailServoMaxAngle);
+        const float futureServoAngle = constrainf(servoAngle_D + angleDiff_D, TRI_TAIL_SERVO_ANGLE_MID_DD - tailServoMaxAngle_DD, TRI_TAIL_SERVO_ANGLE_MID_DD + tailServoMaxAngle_DD);
         currentMixer[0].throttle = getPitchCorrectionAtTailAngle(futureServoAngle);
     }
 
