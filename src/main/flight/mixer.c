@@ -346,7 +346,7 @@ static float virtualServoAngle = TRI_TAIL_SERVO_ANGLE_MID / 10.0f;
 static int16_t yawForceCurve[TRI_YAW_FORCE_CURVE_SIZE];
 static int16_t tailMotorPitchZeroAngle;
 static int16_t tailMotorAccelerationDelay_ms = 30;
-static int16_t tailMotorDecelerationDelay_ms = 100;
+static int16_t tailMotorDecelerationDelay_ms = 30;
 static int16_t tailMotorAccelerationDelay_angle;
 static int16_t tailMotorDecelerationDelay_angle;
 
@@ -602,6 +602,41 @@ void writeServos(void)
 {
     uint8_t servoIndex = 0;
 
+	static uint8_t testActive = 0;
+	static uint8_t testStep = 0;
+	static uint16_t servoOutput = 0;
+	static float testTimeOut = 0;
+
+	if (rcData[THROTTLE] > 1400)
+	{
+		testActive = 1;
+	}
+	else
+	{
+	    testActive = 0;
+	}
+
+	if (testActive == 1)
+	{
+		testTimeOut -= dT;
+
+		if (testTimeOut <= 0.0f)
+		{
+			testTimeOut = 1.0f;
+			if ((testStep % 2) == 0)
+			{
+			    servoOutput = servoConf[SERVO_RUDDER].min;
+			}
+			else
+			{
+			    servoOutput = servoConf[SERVO_RUDDER].max;
+			}
+			testStep++;
+		}
+	}
+
+	servo[SERVO_RUDDER] = servoOutput;
+
     switch (currentMixerMode) {
         case MIXER_BICOPTER:
             pwmWriteServo(servoIndex++, servo[SERVO_BICOPTER_LEFT]);
@@ -764,15 +799,15 @@ STATIC_UNIT_TESTED void servoMixer(void)
                     currentOutput[i] = constrain(currentOutput[i] - currentServoMixer[i].speed, input[from], currentOutput[i]);
             }
 
-            servo[target] += servoDirection(target, from) * constrain(((int32_t)currentOutput[i] * currentServoMixer[i].rate) / 100, min, max);
+            //servo[target] += servoDirection(target, from) * constrain(((int32_t)currentOutput[i] * currentServoMixer[i].rate) / 100, min, max);
         } else {
             currentOutput[i] = 0;
         }
     }
 
     for (i = 0; i < MAX_SUPPORTED_SERVOS; i++) {
-        servo[i] = ((int32_t)servoConf[i].rate * servo[i]) / 100L;
-        servo[i] += determineServoMiddleOrForwardFromChannel(i);
+        //servo[i] = ((int32_t)servoConf[i].rate * servo[i]) / 100L;
+        //servo[i] += determineServoMiddleOrForwardFromChannel(i);
 
     }
 
@@ -780,7 +815,7 @@ STATIC_UNIT_TESTED void servoMixer(void)
     {
         if (ARMING_FLAG(ARMED))
         {
-            servo[SERVO_RUDDER] = getLinearServoValue(&servoConf[SERVO_RUDDER], servo[SERVO_RUDDER]);
+            //servo[SERVO_RUDDER] = getLinearServoValue(&servoConf[SERVO_RUDDER], servo[SERVO_RUDDER]);
         }
 
         virtualServoStep(dT, &servoConf[SERVO_RUDDER], servo[SERVO_RUDDER]);
@@ -851,12 +886,7 @@ void mixTable(void)
 
     // motors for non-servo mixes
     for (i = 0; i < motorCount; i++) {
-        motor[i] =
-            rcCommand[THROTTLE] * currentMixer[i].throttle +
-            axisPID[PITCH] * currentMixer[i].pitch +
-            axisPID[ROLL] * currentMixer[i].roll +
-            -mixerConfig->yaw_motor_direction * axisPID[YAW] * currentMixer[i].yaw +
-            motorCorrection[i];
+        motor[i] = 1000;
     }
 
     if (ARMING_FLAG(ARMED)) {
@@ -887,20 +917,20 @@ void mixTable(void)
                 if ((rcData[THROTTLE]) > rxConfig->midrc) {
                     motor[i] = constrain(motor[i], flight3DConfig->deadband3d_high, escAndServoConfig->maxthrottle);
                 } else {
-                    motor[i] = constrain(motor[i], escAndServoConfig->mincommand, flight3DConfig->deadband3d_low);
+                    motor[i] = constrain(motor[i], 1000, flight3DConfig->deadband3d_low);
                 }
             } else {
                 if (isFailsafeActive) {
-                    motor[i] = constrain(motor[i], escAndServoConfig->mincommand, escAndServoConfig->maxthrottle);
+                    motor[i] = constrain(motor[i], 1000, escAndServoConfig->maxthrottle);
                 } else {
                     // If we're at minimum throttle and FEATURE_MOTOR_STOP enabled,
                     // do not spin the motors.
-                    motor[i] = constrain(motor[i], escAndServoConfig->minthrottle, escAndServoConfig->maxthrottle);
+                    motor[i] = constrain(motor[i], 1000, escAndServoConfig->maxthrottle);
                     if ((rcData[THROTTLE]) < rxConfig->mincheck) {
                         if (feature(FEATURE_MOTOR_STOP)) {
-                            motor[i] = escAndServoConfig->mincommand;
+                            motor[i] = 1000;
                         } else if (mixerConfig->pid_at_min_throttle == 0) {
-                            motor[i] = escAndServoConfig->minthrottle;
+                            motor[i] = 1000;
                         }
                     }
                 }
@@ -983,10 +1013,10 @@ void filterServos(void)
 
     if (mixerConfig->servo_lowpass_enable) {
         for (servoIdx = 0; servoIdx < MAX_SUPPORTED_SERVOS; servoIdx++) {
-            servo[servoIdx] = (int16_t)lowpassFixed(&lowpassFilters[servoIdx], servo[servoIdx], mixerConfig->servo_lowpass_freq);
+            //servo[servoIdx] = (int16_t)lowpassFixed(&lowpassFilters[servoIdx], servo[servoIdx], mixerConfig->servo_lowpass_freq);
 
             // Sanity check
-            servo[servoIdx] = constrain(servo[servoIdx], servoConf[servoIdx].min, servoConf[servoIdx].max);
+            //servo[servoIdx] = constrain(servo[servoIdx], servoConf[servoIdx].min, servoConf[servoIdx].max);
         }
     }
 #if defined(MIXER_DEBUG)
