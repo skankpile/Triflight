@@ -346,7 +346,7 @@ static float virtualServoAngle = TRI_TAIL_SERVO_ANGLE_MID / 10.0f;
 static int16_t yawForceCurve[TRI_YAW_FORCE_CURVE_SIZE];
 static int16_t tailMotorPitchZeroAngle;
 static int16_t tailMotorAccelerationDelay_ms = 30;
-static int16_t tailMotorDecelerationDelay_ms = 30;
+static int16_t tailMotorDecelerationDelay_ms = 100;
 static int16_t tailMotorAccelerationDelay_angle;
 static int16_t tailMotorDecelerationDelay_angle;
 
