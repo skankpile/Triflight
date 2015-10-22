@@ -882,7 +882,7 @@ void mixTable(void)
 
         const int16_t futureServoAngle = constrain(servoAngle + angleDiff, TRI_TAIL_SERVO_ANGLE_MID - tailServoMaxAngle, TRI_TAIL_SERVO_ANGLE_MID + tailServoMaxAngle);
         uint16_t throttleMotorOutput = rcCommand[THROTTLE] - getCurrentMinthrottle();
-        motorCorrection[0] = 0.5f * ((throttleMotorOutput * getPitchCorrectionAtTailAngle(DEGREES_TO_RADIANS(futureServoAngle / 10.0f))) - throttleMotorOutput);
+        motorCorrection[0] = (throttleMotorOutput * getPitchCorrectionAtTailAngle(DEGREES_TO_RADIANS(futureServoAngle / 10.0f))) - throttleMotorOutput;
     }
 
     if (IS_RC_MODE_ACTIVE(BOXAIRMODE)) {
