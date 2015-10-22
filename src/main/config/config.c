@@ -181,9 +181,9 @@ void resetPidProfile(pidProfile_t *pidProfile)
     pidProfile->P_f[PITCH] = 1.4f;
     pidProfile->I_f[PITCH] = 0.09f;
     pidProfile->D_f[PITCH] = 0.035f;
-    pidProfile->P_f[YAW] = 4.1f;
-    pidProfile->I_f[YAW] = 0.9f;
-    pidProfile->D_f[YAW] = 0.092f;
+    pidProfile->P_f[YAW] = 2.5f;
+    pidProfile->I_f[YAW] = 0.08f;
+    pidProfile->D_f[YAW] = 0.050f;
     pidProfile->A_level = 5.0f;
     pidProfile->H_level = 3.0f;
     pidProfile->H_sensitivity = 75;
@@ -284,11 +284,12 @@ void resetSerialConfig(serialConfig_t *serialConfig)
 }
 
 static void resetControlRateConfig(controlRateConfig_t *controlRateConfig) {
-    controlRateConfig->rcRate8 = 110;
-    controlRateConfig->rcExpo8 = 90;
+    controlRateConfig->rcRate8 = 100;
+    controlRateConfig->rcExpo8 = 85;
     controlRateConfig->thrMid8 = 50;
     controlRateConfig->dynThrPID = 0;
     controlRateConfig->tpa_yaw_rate = 90;
+    controlRateConfig->rcYawExpo8 = 83;
     controlRateConfig->tpa_breakpoint = 1500;
     controlRateConfig->tpa_yaw_breakpoint = 1500;
 }
@@ -560,9 +561,9 @@ STATIC_UNIT_TESTED void resetConf(void)
     masterConfig.failsafeConfig.failsafe_delay = 2;
     masterConfig.failsafeConfig.failsafe_off_delay = 0;
     currentControlRateProfile->rcRate8 = 130;
-    currentControlRateProfile->rates[FD_PITCH] = 40;
-    currentControlRateProfile->rates[FD_ROLL] = 40;
-    currentControlRateProfile->rates[FD_YAW] = 55;
+    currentControlRateProfile->rates[FD_PITCH] = 38;
+    currentControlRateProfile->rates[FD_ROLL] = 38;
+    currentControlRateProfile->rates[FD_YAW] = 50;
     parseRcChannels("TAER1234", &masterConfig.rxConfig);
 
     //  { 1.0f, -0.414178f,  1.0f, -1.0f },          // REAR_R
