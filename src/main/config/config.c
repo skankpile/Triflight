@@ -135,7 +135,7 @@ static uint32_t activeFeaturesLatch = 0;
 static uint8_t currentControlRateProfileIndex = 0;
 controlRateConfig_t *currentControlRateProfile;
 
-static const uint8_t EEPROM_CONF_VERSION = 109;
+static const uint8_t EEPROM_CONF_VERSION = 110;
 
 static void resetAccelerometerTrims(flightDynamicsTrims_t *accelerometerTrims)
 {
@@ -314,7 +314,7 @@ static void resetControlRateConfig(controlRateConfig_t *controlRateConfig) {
     controlRateConfig->rcExpo8 = 85;
     controlRateConfig->thrMid8 = 50;
     controlRateConfig->thrExpo8 = 0;
-    controlRateConfig->dynThrPID = 50;
+    controlRateConfig->dynThrPID = 25;
     controlRateConfig->tpa_yaw_rate = 90;
     controlRateConfig->rcYawExpo8 = 83;
     controlRateConfig->tpa_breakpoint = 1500;
@@ -341,8 +341,8 @@ void resetMixerConfig(mixerConfig_t *mixerConfig) {
     mixerConfig->servo_lowpass_freq = 400;
     mixerConfig->servo_lowpass_enable = 0;
     mixerConfig->tri_servo_angle_at_max = 400;
-    mixerConfig->tri_tail_motor_thrustfactor = 100;
-    mixerConfig->tri_tail_servo_speed = 225; // Default for BMS-210DMH at 5V
+    mixerConfig->tri_tail_motor_thrustfactor = 138;
+    mixerConfig->tri_tail_servo_speed = 300; // Default for BMS-210DMH at 5V
 #endif
 }
 
