@@ -31,7 +31,7 @@
 
 #ifndef SOFT_I2C
 
-#define CLOCKSPEED 1200000    // i2c clockspeed 400kHz default (conform specs), 800kHz  and  1200kHz (Betaflight default)
+#define CLOCKSPEED 800000    // i2c clockspeed 400kHz default (conform specs), 800kHz  and  1200kHz (Betaflight default)
 
 // I2C2
 // SCL  PB10
@@ -44,7 +44,7 @@ static void i2c_er_handler(void);
 static void i2c_ev_handler(void);
 static void i2cUnstick(void);
 
-typedef struct i2cDevice_t {
+typedef struct i2cDevice_s {
     I2C_TypeDef *dev;
     GPIO_TypeDef *gpio;
     uint16_t scl;

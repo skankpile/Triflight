@@ -75,8 +75,6 @@
 
 void useRcControlsConfig(modeActivationCondition_t *modeActivationConditions, escAndServoConfig_t *escAndServoConfigToUse, pidProfile_t *pidProfileToUse);
 
-#define FLASH_TO_RESERVE_FOR_CONFIG 0x800
-
 #if !defined(FLASH_SIZE)
 #error "Flash size not defined for target. (specify in KB)"
 #endif
@@ -118,6 +116,12 @@ void useRcControlsConfig(modeActivationCondition_t *modeActivationConditions, es
 #error "Flash page count not defined for target."
 #endif
 
+#if FLASH_SIZE <= 128
+#define FLASH_TO_RESERVE_FOR_CONFIG 0x800
+#else
+#define FLASH_TO_RESERVE_FOR_CONFIG 0x1000
+#endif
+
 // use the last flash pages for storage
 #define CONFIG_START_FLASH_ADDRESS (0x08000000 + (uint32_t)((FLASH_PAGE_SIZE * FLASH_PAGE_COUNT) - FLASH_TO_RESERVE_FOR_CONFIG))
 
@@ -143,13 +147,13 @@ static void resetPidProfile(pidProfile_t *pidProfile)
 
     pidProfile->P8[ROLL] = 40;
     pidProfile->I8[ROLL] = 30;
-    pidProfile->D8[ROLL] = 50;
+    pidProfile->D8[ROLL] = 18;
     pidProfile->P8[PITCH] = 40;
     pidProfile->I8[PITCH] = 30;
-    pidProfile->D8[PITCH] = 50;
+    pidProfile->D8[PITCH] = 18;
     pidProfile->P8[YAW] = 95;
     pidProfile->I8[YAW] = 50;
-    pidProfile->D8[YAW] = 20;
+    pidProfile->D8[YAW] = 10;
     pidProfile->P8[PIDALT] = 50;
     pidProfile->I8[PIDALT] = 0;
     pidProfile->D8[PIDALT] = 0;
@@ -162,8 +166,8 @@ static void resetPidProfile(pidProfile_t *pidProfile)
     pidProfile->P8[PIDNAVR] = 25; // NAV_P * 10;
     pidProfile->I8[PIDNAVR] = 33; // NAV_I * 100;
     pidProfile->D8[PIDNAVR] = 83; // NAV_D * 1000;
-    pidProfile->P8[PIDLEVEL] = 90;
-    pidProfile->I8[PIDLEVEL] = 10;
+    pidProfile->P8[PIDLEVEL] = 20;
+    pidProfile->I8[PIDLEVEL] = 20;
     pidProfile->D8[PIDLEVEL] = 100;
     pidProfile->P8[PIDMAG] = 40;
     pidProfile->P8[PIDVEL] = 120;
@@ -184,7 +188,20 @@ static void resetPidProfile(pidProfile_t *pidProfile)
     pidProfile->D_f[YAW] = 0.050f;
     pidProfile->A_level = 5.0f;
     pidProfile->H_level = 3.0f;
+
     pidProfile->H_sensitivity = 75;
+
+#ifdef GTUNE
+    pidProfile->gtune_lolimP[ROLL] = 10;          // [0..200] Lower limit of ROLL P during G tune.
+    pidProfile->gtune_lolimP[PITCH] = 10;         // [0..200] Lower limit of PITCH P during G tune.
+    pidProfile->gtune_lolimP[YAW] = 10;           // [0..200] Lower limit of YAW P during G tune.
+    pidProfile->gtune_hilimP[ROLL] = 100;         // [0..200] Higher limit of ROLL P during G tune. 0 Disables tuning for that axis.
+    pidProfile->gtune_hilimP[PITCH] = 100;        // [0..200] Higher limit of PITCH P during G tune. 0 Disables tuning for that axis.
+    pidProfile->gtune_hilimP[YAW] = 100;          // [0..200] Higher limit of YAW P during G tune. 0 Disables tuning for that axis.
+    pidProfile->gtune_pwr = 0;                    // [0..10] Strength of adjustment
+    pidProfile->gtune_settle_time = 450;          // [200..1000] Settle time in ms
+    pidProfile->gtune_average_cycles = 16;        // [8..128] Number of looptime cycles used for gyro average calculation
+#endif
 }
 
 #ifdef GPS
@@ -380,11 +397,12 @@ static void resetConf(void)
 #endif
 
     featureSet(FEATURE_FAILSAFE);
+    featureSet(FEATURE_ONESHOT125);
 
     // global settings
     masterConfig.current_profile_index = 0;     // default profile
-    masterConfig.gyro_cmpf_factor = 600;        // default MWC
-    masterConfig.gyro_cmpfm_factor = 250;       // default MWC
+    masterConfig.dcm_kp = 10000;                // 1.0 * 10000
+    masterConfig.dcm_ki = 0;                    // 0.003 * 10000
 
     resetAccelerometerTrims(&masterConfig.accZero);
 
@@ -394,12 +412,14 @@ static void resetConf(void)
     masterConfig.boardAlignment.pitchDegrees = 0;
     masterConfig.boardAlignment.yawDegrees = 0;
     masterConfig.acc_hardware = ACC_DEFAULT;     // default/autodetect
-    masterConfig.max_angle_inclination = 500;    // 50 degrees
+    masterConfig.max_angle_inclination = 700;    // 70 degrees
     masterConfig.yaw_control_direction = 1;
     masterConfig.gyroConfig.gyroMovementCalibrationThreshold = 32;
 
-    masterConfig.mag_hardware = 1;     // default/autodetect
-    masterConfig.baro_hardware = 1;   // default/autodetect
+    // xxx_hardware: 0:default/autodetect, 1: disable
+    masterConfig.mag_hardware = 0;
+
+    masterConfig.baro_hardware = 0;
 
     resetBatteryConfig(&masterConfig.batteryConfig);
 
@@ -470,14 +490,13 @@ static void resetConf(void)
     resetRollAndPitchTrims(&currentProfile->accelerometerTrims);
 
     currentProfile->mag_declination = 0;
-    currentProfile->acc_lpf_factor = 4;
+    currentProfile->acc_cut_hz = 15;
     currentProfile->accz_lpf_cutoff = 5.0f;
     currentProfile->accDeadband.xy = 40;
     currentProfile->accDeadband.z = 40;
+    currentProfile->acc_unarmedcal = 1;
 
     resetBarometerConfig(&currentProfile->barometerConfig);
-
-    currentProfile->acc_unarmedcal = 1;
 
     // Radio
     parseRcChannels("AETR1234", &masterConfig.rxConfig);
@@ -489,7 +508,7 @@ static void resetConf(void)
 
     // Failsafe Variables
     masterConfig.failsafeConfig.failsafe_delay = 10;              // 1sec
-    masterConfig.failsafeConfig.failsafe_off_delay = 200;         // 20sec
+    masterConfig.failsafeConfig.failsafe_off_delay = 10;          // 1sec
     masterConfig.failsafeConfig.failsafe_throttle = 1000;         // default throttle off.
     masterConfig.failsafeConfig.failsafe_kill_switch = 0;         // default failsafe switch action is identical to rc link loss
     masterConfig.failsafeConfig.failsafe_throttle_low_delay = 100; // default throttle low delay for "just disarm" on failsafe condition
@@ -705,10 +724,10 @@ void activateConfig(void)
         &masterConfig.rxConfig
     );
 
-    imuRuntimeConfig.gyro_cmpf_factor = masterConfig.gyro_cmpf_factor;
-    imuRuntimeConfig.gyro_cmpfm_factor = masterConfig.gyro_cmpfm_factor;
-    imuRuntimeConfig.acc_lpf_factor = currentProfile->acc_lpf_factor;
-    imuRuntimeConfig.acc_unarmedcal = currentProfile->acc_unarmedcal;;
+    imuRuntimeConfig.dcm_kp = masterConfig.dcm_kp / 10000.0f;
+    imuRuntimeConfig.dcm_ki = masterConfig.dcm_ki / 10000.0f;
+    imuRuntimeConfig.acc_cut_hz = currentProfile->acc_cut_hz;
+    imuRuntimeConfig.acc_unarmedcal = currentProfile->acc_unarmedcal;
     imuRuntimeConfig.small_angle = masterConfig.small_angle;
 
     imuConfigure(

@@ -142,10 +142,11 @@ void useRcControlsConfig(modeActivationCondition_t *modeActivationConditions, es
 
 #define MULTIWII_IDENTIFIER "MWII";
 #define CLEANFLIGHT_IDENTIFIER "CLFL"
+#define BETAFLIGHT_IDENTIFIER "BTFL"
 #define BASEFLIGHT_IDENTIFIER "BAFL";
 
 #define FLIGHT_CONTROLLER_IDENTIFIER_LENGTH 4
-static const char * const flightControllerIdentifier = CLEANFLIGHT_IDENTIFIER; // 4 UPPER CASE alpha numeric characters that identify the flight controller.
+static const char * const flightControllerIdentifier = BETAFLIGHT_IDENTIFIER; // 4 UPPER CASE alpha numeric characters that identify the flight controller.
 
 #define FLIGHT_CONTROLLER_VERSION_LENGTH    3
 #define FLIGHT_CONTROLLER_VERSION_MASK      0xFFF
@@ -348,7 +349,7 @@ static const box_t boxes[CHECKBOX_ITEM_COUNT + 1] = {
     { BOXGOV, "GOVERNOR;", 18 },
     { BOXOSD, "OSD SW;", 19 },
     { BOXTELEMETRY, "TELEMETRY;", 20 },
-    { BOXAUTOTUNE, "AUTOTUNE;", 21 },
+    { BOXGTUNE, "GTUNE;", 21 },
     { BOXSONAR, "SONAR;", 22 },
     { BOXSERVO1, "SERVO1;", 23 },
     { BOXSERVO2, "SERVO2;", 24 },
@@ -685,10 +686,6 @@ void mspInit(serialConfig_t *serialConfig)
     if (feature(FEATURE_TELEMETRY) && masterConfig.telemetryConfig.telemetry_switch)
         activeBoxIds[activeBoxIdCount++] = BOXTELEMETRY;
 
-#ifdef AUTOTUNE
-    activeBoxIds[activeBoxIdCount++] = BOXAUTOTUNE;
-#endif
-
     if (feature(FEATURE_SONAR)){
         activeBoxIds[activeBoxIdCount++] = BOXSONAR;
     }
@@ -710,6 +707,10 @@ void mspInit(serialConfig_t *serialConfig)
     if (feature(FEATURE_FAILSAFE)){
         activeBoxIds[activeBoxIdCount++] = BOXFAILSAFE;
     }
+
+#ifdef GTUNE
+    activeBoxIds[activeBoxIdCount++] = BOXGTUNE;
+#endif
 
     memset(mspPorts, 0x00, sizeof(mspPorts));
     mspAllocateSerialPorts(serialConfig);
@@ -829,7 +830,7 @@ static bool processOutCommand(uint8_t cmdMSP)
             IS_ENABLED(IS_RC_MODE_ACTIVE(BOXGOV)) << BOXGOV |
             IS_ENABLED(IS_RC_MODE_ACTIVE(BOXOSD)) << BOXOSD |
             IS_ENABLED(IS_RC_MODE_ACTIVE(BOXTELEMETRY)) << BOXTELEMETRY |
-            IS_ENABLED(IS_RC_MODE_ACTIVE(BOXAUTOTUNE)) << BOXAUTOTUNE |
+            IS_ENABLED(IS_RC_MODE_ACTIVE(BOXGTUNE)) << BOXGTUNE |
             IS_ENABLED(FLIGHT_MODE(SONAR_MODE)) << BOXSONAR |
             IS_ENABLED(ARMING_FLAG(ARMED)) << BOXARM |
             IS_ENABLED(IS_RC_MODE_ACTIVE(BOXBLACKBOX)) << BOXBLACKBOX |
@@ -895,9 +896,9 @@ static bool processOutCommand(uint8_t cmdMSP)
         break;
     case MSP_ATTITUDE:
         headSerialReply(6);
-        for (i = 0; i < 2; i++)
-            serialize16(inclination.raw[i]);
-        serialize16(heading);
+        serialize16(attitude.values.roll);
+        serialize16(attitude.values.pitch);
+        serialize16(DECIDEGREES_TO_DEGREES(attitude.values.yaw));
         break;
     case MSP_ALTITUDE:
         headSerialReply(6);
@@ -928,7 +929,7 @@ static bool processOutCommand(uint8_t cmdMSP)
         break;
     case MSP_ARMING_CONFIG:
         headSerialReply(2);
-        serialize8(masterConfig.auto_disarm_delay); 
+        serialize8(masterConfig.auto_disarm_delay);
         serialize8(masterConfig.disarm_kill_switch);
         break;
     case MSP_LOOP_TIME:
@@ -1359,7 +1360,7 @@ static bool processInCommand(void)
     case MSP_SET_LOOP_TIME:
         break;
     case MSP_SET_PID_CONTROLLER:
-        currentProfile->pidProfile.pidController = read8();
+        currentProfile->pidProfile.pidController = constrain(read8(), 1, 2);  // Temporary configurator compatibility
         pidSetController(currentProfile->pidProfile.pidController);
         break;
     case MSP_SET_PID:
@@ -1523,7 +1524,7 @@ static bool processInCommand(void)
         }
 #endif
         break;
-        
+
     case MSP_SET_SERVO_MIX_RULE:
 #ifdef USE_SERVOS
         i = read8();
@@ -1541,7 +1542,7 @@ static bool processInCommand(void)
         }
 #endif
         break;
-        
+
     case MSP_RESET_CONF:
         if (!ARMING_FLAG(ARMED)) {
             resetEEPROM();
@@ -1798,13 +1799,32 @@ static bool processInCommand(void)
                 headSerialReply(0);
                 tailSerialReply();
                 // wait for all data to send
-                while (!isSerialTransmitBufferEmpty(mspSerialPort)) {
-                    delay(50);
-                }
+                waitForSerialPortToFinishTransmitting(currentPort->port);
                 // Start to activate here
                 // motor 1 => index 0
+                
+                // search currentPort portIndex
+                /* next lines seems to be unnecessary, because the currentPort always point to the same mspPorts[portIndex]
+                uint8_t portIndex;	
+				for (portIndex = 0; portIndex < MAX_MSP_PORT_COUNT; portIndex++) {
+					if (currentPort == &mspPorts[portIndex]) {
+						break;
+					}
+				}
+				*/
+                mspReleasePortIfAllocated(mspSerialPort); // CloseSerialPort also marks currentPort as UNUSED_PORT
                 usb1WirePassthrough(i);
-                // MPS uart is active again
+                // Wait a bit more to let App read the 0 byte and switch baudrate
+                // 2ms will most likely do the job, but give some grace time
+                delay(10);
+                // rebuild/refill currentPort structure, does openSerialPort if marked UNUSED_PORT - used ports are skiped
+                mspAllocateSerialPorts(&masterConfig.serialConfig);
+                /* restore currentPort and mspSerialPort
+                setCurrentPort(&mspPorts[portIndex]); // not needed same index will be restored
+                */ 
+                // former used MSP uart is active again
+                // restore MSP_SET_1WIRE as current command for correct headSerialReply(0)
+                currentPort->cmdMSP = MSP_SET_1WIRE;
             } else {
                 // ESC channel higher than max. allowed
                 // rem: BLHeliSuite will not support more than 8
@@ -1892,7 +1912,7 @@ void mspProcess(void)
 
         setCurrentPort(candidatePort);
 
-        while (serialTotalBytesWaiting(mspSerialPort)) {
+        while (serialRxBytesWaiting(mspSerialPort)) {
 
             uint8_t c = serialRead(mspSerialPort);
             bool consumed = mspProcessReceivedData(c);
@@ -1908,10 +1928,7 @@ void mspProcess(void)
         }
 
         if (isRebootScheduled) {
-            // pause a little while to allow response to be sent
-            while (!isSerialTransmitBufferEmpty(candidatePort->port)) {
-                delay(50);
-            }
+            waitForSerialPortToFinishTransmitting(candidatePort->port);
             stopMotors();
             handleOneshotFeatureChangeOnRestart();
             systemReset();

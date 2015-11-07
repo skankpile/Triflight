@@ -37,7 +37,7 @@
 #define DEGREES_TO_RADIANS(degrees) ((degrees) * (float)M_PI / 180.0f)
 #define RADIANS_TO_DEGREES(radians) ((radians) * 180.0f / (float)M_PI)
 
-typedef struct stdev_t
+typedef struct stdev_s
 {
     float m_oldM, m_newM, m_oldS, m_newS;
     int m_n;

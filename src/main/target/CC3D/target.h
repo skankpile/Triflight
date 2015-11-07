@@ -27,8 +27,14 @@
 #define INVERTER_PERIPHERAL RCC_APB2Periph_GPIOB
 #define INVERTER_USART USART1
 
+//#define BEEPER_PIN6 // Uncomment this line for hexacopter configurations where PIN6 is needed for motor
+
 #define BEEP_GPIO GPIOA
+#ifdef BEEPER_PIN6
+#define BEEP_PIN Pin_2 // PA2 (Beeper)
+#else
 #define BEEP_PIN Pin_15 // PA15 (Beeper)
+#endif
 #define BEEP_PERIPHERAL RCC_APB2Periph_GPIOA
 
 #define MPU6000_CS_GPIO       GPIOA
@@ -44,15 +50,18 @@
 
 #define USABLE_TIMER_CHANNEL_COUNT 12
 
+#define DEBUG_MPU_DATA_READY_INTERRUPT
+#define USE_MPU_DATA_READY_SIGNAL
+
 #define GYRO
 #define USE_GYRO_SPI_MPU6000
 
-#define GYRO_SPI_MPU6000_ALIGN CW270_DEG
+#define GYRO_MPU6000_ALIGN CW270_DEG
 
 #define ACC
 #define USE_ACC_SPI_MPU6000
 
-#define ACC_SPI_MPU6000_ALIGN CW270_DEG
+#define ACC_MPU6000_ALIGN CW270_DEG
 
 // MPU6000 interrupts
 #define USE_MPU_DATA_READY_SIGNAL
@@ -116,7 +125,6 @@
 #define TELEMETRY
 #define SERIAL_RX
 #define SONAR
-#define AUTOTUNE
 #define USE_SERVOS
 #define USE_CLI
 
@@ -133,19 +141,12 @@
 #define S1W_RX_GPIO         GPIOB
 #define S1W_RX_PIN          GPIO_Pin_11
 
-#if defined(OPBL)
-// disabled some features for OPBL build due to code size.
-#undef AUTOTUNE
-#undef BARO
-#undef DISPLAY
-#undef SONAR
-#define SKIP_CLI_COMMAND_HELP
-#endif
-
 #if defined(OPBL) && defined(USE_SERIAL_1WIRE)
 #undef DISPLAY
+#undef SONAR
+#undef BARO
+#define SKIP_CLI_COMMAND_HELP
 #endif
-
 
 #define SPEKTRUM_BIND
 // USART3, PB11 (Flexport)

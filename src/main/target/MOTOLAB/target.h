@@ -113,6 +113,7 @@
 #define BLACKBOX
 #define SERIAL_RX
 //#define GPS
+#define GTUNE
 #define DISPLAY
 #define USE_SERVOS
 #define USE_FLASHFS
@@ -171,7 +172,7 @@
 #endif
 
 
-//#define SPEKTRUM_BIND
+#define SPEKTRUM_BIND
 // USART2, PB4
 #define BIND_PORT GPIOB
 #define BIND_PIN Pin_4

@@ -153,3 +153,5 @@ void resetAllRxChannelRangeConfigurations(rxChannelRangeConfiguration_t *rxChann
 void initRxRefreshRate(uint16_t *rxRefreshRatePtr);
 void suspendRxSignal(void);
 void resumeRxSignal(void);
+
+void initRxRefreshRate(uint16_t *rxRefreshRatePtr);

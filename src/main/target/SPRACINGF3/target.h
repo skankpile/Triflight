@@ -30,7 +30,7 @@
 
 #define USABLE_TIMER_CHANNEL_COUNT 17
 
-#define EXTI15_10_CALLBACK_HANDLER_COUNT 2 // MPU data ready and MAG data ready
+#define EXTI_CALLBACK_HANDLER_COUNT 2 // MPU data ready and MAG data ready
 
 #define USE_MPU_DATA_READY_SIGNAL
 #define ENSURE_MPU_DATA_READY_IS_LOW
@@ -157,12 +157,12 @@
 #define WS2811_DMA_CHANNEL              DMA1_Channel2
 #define WS2811_IRQ                      DMA1_Channel2_IRQn
 
-#define GPS
 #define BLACKBOX
-#define TELEMETRY
-#define SERIAL_RX
-#define AUTOTUNE
 #define DISPLAY
+#define GPS
+#define GTUNE
+#define SERIAL_RX
+#define TELEMETRY
 #define USE_SERVOS
 #define USE_CLI
 

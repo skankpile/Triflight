@@ -38,7 +38,7 @@ The 6 pin RC_Output connector has the following pinouts when used in RX_PPM/RX_S
 | 3   | MOTOR 3   |       |
 | 4   | MOTOR 4   |       |
 | 5   | LED Strip |       |
-| 6   | Unused    |       |
+| 6   | Buzzer    |       |
 
 The 8 pin RC_Input connector has the following pinouts when used in RX_PARALLEL_PWM mode
 
@@ -123,7 +123,6 @@ The OpenPilot bootloader code also allows the remaining section of flash to be r
 OpenPilot Ground Station (GCS) via USB without requiring a USB to uart adapter.
 
 The following features are not available:
- * Autotune
  * Display
  * Sonar
 

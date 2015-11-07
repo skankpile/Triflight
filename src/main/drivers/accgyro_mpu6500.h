@@ -15,14 +15,14 @@
  * along with Cleanflight.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#define MPU6500_WHO_AM_I_CONST              (0x70)
+
+#define MPU6500_BIT_RESET                   (0x80)
+
 #pragma once
 
-void autotuneReset();
-void autotuneBeginNextPhase(pidProfile_t *pidProfileToTune);
-float autotune(angle_index_t angleIndex, const rollAndPitchInclination_t *inclination, float errorAngle);
-void autotuneEndPhase();
+bool mpu6500AccDetect(acc_t *acc);
+bool mpu6500GyroDetect(gyro_t *gyro);
 
-bool isAutotuneIdle(void);
-bool hasAutotunePhaseCompleted(void);
-bool havePidsBeenUpdatedByAutotune(void);
-
+void mpu6500AccInit(void);
+void mpu6500GyroInit(uint16_t lpf);
