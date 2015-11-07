@@ -362,7 +362,7 @@ static bool blackboxModeActivationConditionPresent = false;
 static bool blackboxIsOnlyLoggingIntraframes() {
     return masterConfig.blackbox_rate_num == 1 && masterConfig.blackbox_rate_denom == 32;
 }
-extern float getVirtualServoAngle();
+extern float triGetVirtualServoAngle();
 
 static bool testBlackboxConditionUncached(FlightLogFieldCondition condition)
 {
@@ -950,7 +950,7 @@ static void loadMainState(void)
 
 #ifdef USE_SERVOS
     //Tail servo for tricopters
-    blackboxCurrent->servo[5] = getVirtualServoAngle() * 10.0f;
+    blackboxCurrent->servo[5] = triGetVirtualServoAngle() * 10.0f;
 #endif
 }
 
