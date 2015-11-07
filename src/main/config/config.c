@@ -174,7 +174,6 @@ static void resetPidProfile(pidProfile_t *pidProfile)
     pidProfile->I8[PIDVEL] = 45;
     pidProfile->D8[PIDVEL] = 1;
 
-    pidProfile->yaw_p_limit = YAW_P_LIMIT_MAX;
     pidProfile->dterm_cut_hz = 20;
 
     pidProfile->P_f[ROLL] = 1.5f;     // new PID with preliminary defaults test carefully
