@@ -393,7 +393,7 @@ void mixerInit(mixerMode_e mixerMode, motorMixer_t *initialCustomMotorMixers, se
 #ifdef USE_SERVOS
     if (currentMixerMode == MIXER_TRI)
     {
-        triInitMixer(&servoConf[SERVO_RUDDER], &servo[SERVO_RUDDER]);
+        triInitMixer(&servoConf[SERVO_RUDDER], &servo[SERVO_RUDDER], mixerConfig);
     }
 #endif
 }
