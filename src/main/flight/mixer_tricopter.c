@@ -55,14 +55,43 @@
 #define TRI_YAW_FORCE_CURVE_SIZE (100)
 #define TRI_TAIL_SERVO_MAX_ANGLE (500)
 
-// These need to be configurable
-#define TRI_TAIL_MOTOR_CURVE_MAX_PHASE_SHIFT 150
+#define SERVO_CALIB_NUM_OF_MEAS (5)
+#define IsDelayElapsed(timestamp_us, delay_us) ((uint32_t)(micros() - timestamp_us) >= delay_us)
+
+typedef enum {
+    IDLE = 0,
+    INIT,
+    LISTEN_SILENCE,
+    SERVO_TO_START,
+    DETECT_START,
+    DETECT_END,
+    CHECK_RESULTS,
+    DONE
+} servoCalibState_e;
+
+typedef struct servoCalibration_s {
+    uint8_t active;
+    uint8_t numOfMeasurements;
+    uint8_t counter;
+    uint16_t servoPosition;
+    int16_t maxGyroSumIdle;
+    servoCalibState_e state;
+    uint16_t sumMeasurements;
+    float lowestMeasurement;
+    float highestMeasurement;
+    uint32_t timestamp_us;
+    bool firstTime;
+    uint32_t baseTime;
+    uint8_t counterLimit;
+    uint16_t gyroPeakSum;
+} servoCalibration_t;
 
 #endif
 
 #ifdef USE_SERVOS
 extern float dT;
 
+static servoCalibration_t servoCalib = {.state = IDLE};
 static int16_t tailServoMaxYawForce = 0;
 static float tailServoThrustFactor = 0;
 static int16_t tailServoMaxAngle = 0;
@@ -88,7 +117,10 @@ static uint16_t getPitchCorrectionMaxPhaseShift(int16_t servoAngle,
         int16_t motorAccelerationDelayAngle,
         int16_t motorDecelerationDelayAngle,
         int16_t motorDirectionChangeAngle);
+static int16_t getGyroSum();
 static void virtualServoStep(float dT, servoParam_t *servoConf, uint16_t servoValue);
+static void triServoCalibrationStep();
+
 #endif
 
 void triInitMixer(servoParam_t *pTailServoConfig,
@@ -146,222 +178,27 @@ uint16_t triGetLinearServoValue(servoParam_t *servoConf, uint16_t servoValue)
     return getServoValueAtAngle(servoConf, correctedAngle);
 }
 
-typedef enum {
-    IDLE = 0,
-    INIT,
-    LISTEN_SILENCE,
-    SERVO_TO_START,
-    DETECT_START,
-    DETECT_END,
-    CHECK_RESULTS,
-    DONE
-} servoCalibState_e;
-
-#define SERVO_CALIB_NUM_OF_MEAS 5
-typedef struct servoCalibration_s {
-    uint8_t active;
-    uint8_t numOfMeasurements;
-    uint8_t counter;
-    uint16_t servoPosition;
-    int16_t maxGyroSumIdle;
-    servoCalibState_e state;
-    uint16_t sumMeasurements;
-    float lowestMeasurement;
-    float highestMeasurement;
-    uint32_t timestamp_ms;
-    bool firstTime;
-    uint32_t baseTime;
-    uint8_t counterLimit;
-    uint16_t gyroPeakSum;
-} servoCalibration_t;
-
-#define IsDelayElapsed(timestamp_ms, delay_ms) ((uint32_t)(micros() - timestamp_ms) >= delay_ms)
-
-servoCalibration_t servoCalib = {.state = IDLE};
-
-void triServoCalibration()
+static int16_t getGyroSum()
 {
-    int16_t gyroSum = ABS(gyroADC[X]) + ABS(gyroADC[Y]) + ABS(gyroADC[Z]);
-
-    switch(servoCalib.state)
-    {
-    case IDLE:
-        if (IS_RC_MODE_ACTIVE(BOXTAILTUNE))
-        {
-            ENABLE_FLIGHT_MODE(TAILTUNE_MODE);
-            servoCalib.state = INIT;
-            servoCalib.firstTime = true;
-            servoCalib.baseTime = 0;
-            servoCalib.counterLimit = 5;
-            servoCalib.gyroPeakSum = 0;
-        }
-        break;
-    case INIT:
-        servoCalib.active = 1;
-        servoCalib.numOfMeasurements = 0;
-        servoCalib.counter = 0;
-        servoCalib.servoPosition = DEFAULT_SERVO_MIDDLE;
-        servoCalib.maxGyroSumIdle = 0;
-        servoCalib.sumMeasurements = 0.0f;
-        servoCalib.lowestMeasurement = 10000.0f;
-        servoCalib.highestMeasurement = 0.0f;
-        servoCalib.timestamp_ms = micros();
-        servoCalib.state = LISTEN_SILENCE;
-        break;
-    case LISTEN_SILENCE:
-        if (IsDelayElapsed(servoCalib.timestamp_ms, 500000))
-        {
-            if (!IsDelayElapsed(servoCalib.timestamp_ms, 2000000))
-            {
-                gyroSum = ABS(gyroADC[X]) + ABS(gyroADC[Y]) + ABS(gyroADC[Z]);
-
-                servoCalib.maxGyroSumIdle = MAX(servoCalib.maxGyroSumIdle, gyroSum);
-            }
-            else
-            {
-                if (servoCalib.maxGyroSumIdle > 15)
-                {
-                    // It was too loud, try again
-                    servoCalib.maxGyroSumIdle = 0;
-                    servoCalib.timestamp_ms = micros();
-                }
-                else
-                {
-                    servoCalib.timestamp_ms = micros();
-                    servoCalib.state = SERVO_TO_START;
-                    servoCalib.servoPosition = gpTailServoConf->max;
-                    servoCalib.maxGyroSumIdle += 6;
-                }
-            }
-        }
-        break;
-    case SERVO_TO_START:
-        if (IsDelayElapsed(servoCalib.timestamp_ms, 2000000))
-        {
-            servoCalib.timestamp_ms = micros();
-            servoCalib.state = DETECT_START;
-            servoCalib.servoPosition = gpTailServoConf->min;
-        }
-        break;
-    case DETECT_START:
-        gyroSum = ABS(gyroADC[X]) + ABS(gyroADC[Y]) + ABS(gyroADC[Z]);
-        if (servoCalib.firstTime)
-        {
-            if (gyroSum > servoCalib.maxGyroSumIdle)
-            {
-                servoCalib.timestamp_ms = micros();
-                servoCalib.state = DETECT_END;
-            }
-        }
-        else
-        {
-            if (IsDelayElapsed(servoCalib.timestamp_ms, servoCalib.baseTime))
-            {
-                if (gyroSum > servoCalib.gyroPeakSum)
-                {
-                    servoCalib.state = DETECT_END;
-                }
-            }
-        }
-        break;
-    case DETECT_END:
-        gyroSum = ABS(gyroADC[X]) + ABS(gyroADC[Y]) + ABS(gyroADC[Z]);
-
-        if (servoCalib.firstTime)
-        {
-            servoCalib.gyroPeakSum = MAX(servoCalib.gyroPeakSum, gyroSum);
-        }
-        if (gyroSum <= servoCalib.maxGyroSumIdle)
-        {
-            servoCalib.counter++;
-            if (servoCalib.counter > servoCalib.counterLimit)
-            {
-                if (servoCalib.firstTime)
-                {
-                    servoCalib.gyroPeakSum = (uint16_t)(servoCalib.gyroPeakSum * 0.5f);
-                    servoCalib.baseTime = (uint32_t)((micros() - servoCalib.timestamp_ms) * 0.5f);
-                    servoCalib.firstTime = false;
-                    servoCalib.counterLimit = 0;
-                    servoCalib.state = INIT;
-                }
-                else
-                {
-                    // done
-                    float time = (micros() - servoCalib.timestamp_ms) / 1000000.0f;
-                    debug[0] = time*1000.0f;
-                    float speed = (2.0f * tailServoMaxAngle / 10.0f) / time;
-                    debug[2] = speed;
-                    servoCalib.sumMeasurements += (uint16_t)speed;
-
-                    servoCalib.lowestMeasurement = MIN(speed, servoCalib.lowestMeasurement);
-                    servoCalib.highestMeasurement = MAX(speed, servoCalib.highestMeasurement);
-                    servoCalib.numOfMeasurements++;
-
-                    if (servoCalib.numOfMeasurements >= SERVO_CALIB_NUM_OF_MEAS)
-                    {
-                        servoCalib.state = CHECK_RESULTS;
-                    }
-                    else
-                    {
-                        servoCalib.timestamp_ms = micros();
-                        servoCalib.state = SERVO_TO_START;
-                        servoCalib.servoPosition = gpTailServoConf->max;
-                    }
-                }
-            }
-        }
-        else
-        {
-            if (servoCalib.counter > 0)
-            {
-                servoCalib.counter--;
-            }
-        }
-        break;
-    case CHECK_RESULTS:
-        if ((servoCalib.highestMeasurement - servoCalib.lowestMeasurement) > 30.0f)
-        {
-            servoCalib.state = INIT;
-        }
-        else
-        {
-            gpMixerConfig->tri_tail_servo_speed = servoCalib.sumMeasurements / servoCalib.numOfMeasurements;
-            saveConfigAndNotify();
-            DISABLE_FLIGHT_MODE(TAILTUNE_MODE);
-            servoCalib.active = 0;
-            servoCalib.state = DONE;
-            servoCalib.servoPosition = DEFAULT_SERVO_MIDDLE;
-        }
-        break;
-    case DONE:
-        if (!IS_RC_MODE_ACTIVE(BOXTAILTUNE))
-        {
-            servoCalib.state = IDLE;
-        }
-        break;
-    }
-
-
-    debug[1] = servoCalib.baseTime;
-
-    debug[3] = servoCalib.highestMeasurement;
-
+    return ABS(gyroADC[X]) + ABS(gyroADC[Y]) + ABS(gyroADC[Z]);
 }
 
 void triServoMixer()
 {
-    if (servoCalib.active)
-    {
-        *gpTailServo = servoCalib.servoPosition;
-    }
-    else if (ARMING_FLAG(ARMED))
+    if (ARMING_FLAG(ARMED))
     {
         *gpTailServo = triGetLinearServoValue(gpTailServoConf, *gpTailServo);
     }
+    else
+    {
+        triServoCalibrationStep();
+        if (servoCalib.active)
+        {
+            *gpTailServo = servoCalib.servoPosition;
+        }
+    }
 
     virtualServoStep(dT, gpTailServoConf, *gpTailServo);
-
-    triServoCalibration();
 }
 
 int16_t triGetMotorCorrection(uint8_t motorIndex)
@@ -496,6 +333,165 @@ static void virtualServoStep(float dT, servoParam_t *servoConf, uint16_t servoVa
     else // virtualServoAngle > angleSetPoint
     {
         virtualServoAngle -= dA;
+    }
+}
+
+static void triServoCalibrationStep()
+{
+    int16_t gyroSum;
+
+    switch(servoCalib.state)
+    {
+    case IDLE:
+        if (IS_RC_MODE_ACTIVE(BOXTAILTUNE))
+        {
+            ENABLE_FLIGHT_MODE(TAILTUNE_MODE);
+            servoCalib.state = INIT;
+            servoCalib.firstTime = true;
+            servoCalib.baseTime = 0;
+            servoCalib.counterLimit = 5;
+            servoCalib.gyroPeakSum = 0;
+        }
+        break;
+    case INIT:
+        servoCalib.active = 1;
+        servoCalib.numOfMeasurements = 0;
+        servoCalib.counter = 0;
+        servoCalib.servoPosition = DEFAULT_SERVO_MIDDLE;
+        servoCalib.maxGyroSumIdle = 0;
+        servoCalib.sumMeasurements = 0.0f;
+        servoCalib.lowestMeasurement = 10000.0f;
+        servoCalib.highestMeasurement = 0.0f;
+        servoCalib.timestamp_us = micros();
+        servoCalib.state = LISTEN_SILENCE;
+        break;
+    case LISTEN_SILENCE:
+        if (IsDelayElapsed(servoCalib.timestamp_us, 500000))
+        {
+            if (!IsDelayElapsed(servoCalib.timestamp_us, 2000000))
+            {
+                servoCalib.maxGyroSumIdle = MAX(servoCalib.maxGyroSumIdle, getGyroSum());
+            }
+            else
+            {
+                if (servoCalib.maxGyroSumIdle > 15)
+                {
+                    // It was too loud, try again
+                    servoCalib.maxGyroSumIdle = 0;
+                    servoCalib.timestamp_us = micros();
+                }
+                else
+                {
+                    servoCalib.timestamp_us = micros();
+                    servoCalib.state = SERVO_TO_START;
+                    servoCalib.servoPosition = gpTailServoConf->max;
+                    servoCalib.maxGyroSumIdle += 6;
+                }
+            }
+        }
+        break;
+    case SERVO_TO_START:
+        if (IsDelayElapsed(servoCalib.timestamp_us, 2000000))
+        {
+            servoCalib.timestamp_us = micros();
+            servoCalib.state = DETECT_START;
+            servoCalib.servoPosition = gpTailServoConf->min;
+        }
+        break;
+    case DETECT_START:
+        gyroSum = getGyroSum();
+        if (servoCalib.firstTime)
+        {
+            if (gyroSum > servoCalib.maxGyroSumIdle)
+            {
+                servoCalib.timestamp_us = micros();
+                servoCalib.state = DETECT_END;
+            }
+        }
+        else
+        {
+            if (IsDelayElapsed(servoCalib.timestamp_us, servoCalib.baseTime))
+            {
+                if (gyroSum > servoCalib.gyroPeakSum)
+                {
+                    servoCalib.state = DETECT_END;
+                }
+            }
+        }
+        break;
+    case DETECT_END:
+        gyroSum = getGyroSum();
+
+        if (servoCalib.firstTime)
+        {
+            servoCalib.gyroPeakSum = MAX(servoCalib.gyroPeakSum, gyroSum);
+        }
+        if (gyroSum <= servoCalib.maxGyroSumIdle)
+        {
+            servoCalib.counter++;
+            if (servoCalib.counter > servoCalib.counterLimit)
+            {
+                if (servoCalib.firstTime)
+                {
+                    servoCalib.gyroPeakSum = (uint16_t)(servoCalib.gyroPeakSum * 0.5f);
+                    servoCalib.baseTime = (uint32_t)((micros() - servoCalib.timestamp_us) * 0.5f);
+                    servoCalib.firstTime = false;
+                    servoCalib.counterLimit = 0;
+                    servoCalib.state = INIT;
+                }
+                else
+                {
+                    // done
+                    float time = (micros() - servoCalib.timestamp_us) / 1000000.0f;
+                    float speed = (2.0f * tailServoMaxAngle / 10.0f) / time;
+                    servoCalib.sumMeasurements += (uint16_t)speed;
+
+                    servoCalib.lowestMeasurement = MIN(speed, servoCalib.lowestMeasurement);
+                    servoCalib.highestMeasurement = MAX(speed, servoCalib.highestMeasurement);
+                    servoCalib.numOfMeasurements++;
+
+                    if (servoCalib.numOfMeasurements >= SERVO_CALIB_NUM_OF_MEAS)
+                    {
+                        servoCalib.state = CHECK_RESULTS;
+                    }
+                    else
+                    {
+                        servoCalib.timestamp_us = micros();
+                        servoCalib.state = SERVO_TO_START;
+                        servoCalib.servoPosition = gpTailServoConf->max;
+                    }
+                }
+            }
+        }
+        else
+        {
+            if (servoCalib.counter > 0)
+            {
+                servoCalib.counter--;
+            }
+        }
+        break;
+    case CHECK_RESULTS:
+        if ((servoCalib.highestMeasurement - servoCalib.lowestMeasurement) > 30.0f)
+        {
+            servoCalib.state = INIT;
+        }
+        else
+        {
+            gpMixerConfig->tri_tail_servo_speed = servoCalib.sumMeasurements / servoCalib.numOfMeasurements;
+            saveConfigAndNotify();
+            DISABLE_FLIGHT_MODE(TAILTUNE_MODE);
+            servoCalib.active = 0;
+            servoCalib.state = DONE;
+            servoCalib.servoPosition = DEFAULT_SERVO_MIDDLE;
+        }
+        break;
+    case DONE:
+        if (!IS_RC_MODE_ACTIVE(BOXTAILTUNE))
+        {
+            servoCalib.state = IDLE;
+        }
+        break;
     }
 }
 
