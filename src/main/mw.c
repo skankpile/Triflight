@@ -915,3 +915,23 @@ void loop(void)
     }
 #endif
 }
+
+bool isRcAxisWithinDeadband(int32_t axis)
+{
+    int32_t tmp = MIN(ABS(rcData[axis] - masterConfig.rxConfig.midrc), 500);
+    bool ret = false;
+    if (axis == ROLL || axis == PITCH)
+    {
+        if (tmp <= currentProfile->rcControlsConfig.deadband)
+        {
+            ret = true;
+        }
+    }
+    else
+    {
+        if (tmp <= currentProfile->rcControlsConfig.yaw_deadband)
+        {
+            ret = true;
+        }
+    }
+}

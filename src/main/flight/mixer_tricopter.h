@@ -18,7 +18,9 @@
 #ifndef SRC_MAIN_FLIGHT_MIXER_TRICOPTER_H_
 #define SRC_MAIN_FLIGHT_MIXER_TRICOPTER_H_
 
-void triInitMixer(const servoParam_t * const pTailServoConfig, const int16_t * pTailServo, mixerConfig_t *mixerConfig);
+void triInitMixer(servoParam_t *pTailServoConfig,
+        int16_t *pTailServo,
+        mixerConfig_t *mixerConfig);
 
 float triGetVirtualServoAngle();
 

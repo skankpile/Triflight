@@ -20,34 +20,60 @@
 #include "platform.h"
 #include "debug.h"
 
-#include "common/axis.h"
 #include "common/maths.h"
+#include "common/axis.h"
+#include "common/color.h"
+#include "common/encoding.h"
+#include "common/utils.h"
 
-#include "drivers/system.h"
-#include "drivers/pwm_output.h"
-#include "drivers/pwm_mapping.h"
+#include "drivers/gpio.h"
 #include "drivers/sensor.h"
-#include "drivers/accgyro.h"
 #include "drivers/system.h"
-
-#include "rx/rx.h"
-
-#include "io/gimbal.h"
-#include "io/escservo.h"
-#include "io/rc_controls.h"
+#include "drivers/serial.h"
+#include "drivers/compass.h"
+#include "drivers/timer.h"
+#include "drivers/pwm_rx.h"
+#include "drivers/accgyro.h"
+#include "drivers/light_led.h"
 
 #include "sensors/sensors.h"
+#include "sensors/boardalignment.h"
+#include "sensors/sonar.h"
+#include "sensors/compass.h"
 #include "sensors/acceleration.h"
+#include "sensors/barometer.h"
 #include "sensors/gyro.h"
+#include "sensors/battery.h"
+
+#include "io/beeper.h"
+#include "io/display.h"
+#include "io/escservo.h"
+#include "io/rc_controls.h"
+#include "io/gimbal.h"
+#include "io/gps.h"
+#include "io/ledstrip.h"
+#include "io/serial.h"
+#include "io/serial_cli.h"
+#include "io/serial_msp.h"
+#include "io/statusindicator.h"
+
+#include "rx/rx.h"
+#include "rx/msp.h"
+
+#include "telemetry/telemetry.h"
 
 #include "flight/mixer.h"
+#include "flight/altitudehold.h"
 #include "flight/failsafe.h"
-#include "flight/pid.h"
 #include "flight/imu.h"
-#include "flight/lowpass.h"
+#include "flight/navigation.h"
 
 #include "config/runtime_config.h"
 #include "config/config.h"
+#include "config/config_profile.h"
+#include "config/config_master.h"
+
+#include "mw.h"
 
 
 #ifdef USE_SERVOS
@@ -56,18 +82,27 @@
 #define TRI_TAIL_SERVO_MAX_ANGLE (500)
 
 #define SERVO_CALIB_NUM_OF_MEAS (5)
-#define IsDelayElapsed(timestamp_us, delay_us) ((uint32_t)(micros() - timestamp_us) >= delay_us)
+
+#define IsDelayElapsed_us(timestamp_us, delay_us) ((uint32_t)(micros() - timestamp_us) >= delay_us)
+#define IsDelayElapsed_ms(timestamp_ms, delay_ms) ((uint32_t)(millis() - timestamp_ms) >= delay_ms)
 
 typedef enum {
-    IDLE = 0,
-    INIT,
-    LISTEN_SILENCE,
-    SERVO_TO_START,
-    DETECT_START,
-    DETECT_END,
-    CHECK_RESULTS,
-    DONE
+    SC_IDLE = 0,
+    SC_INIT,
+    SC_LISTEN_SILENCE,
+    SC_SERVO_TO_START,
+    SC_DETECT_START,
+    SC_DETECT_END,
+    SC_CHECK_RESULTS,
+    SC_DONE
 } servoCalibState_e;
+
+typedef enum {
+    TTC_IDLE = 0,
+    TTC_INACTIVE,
+    TTC_ACTIVE,
+    TTC_DONE
+} thrTrqCalibState_e;
 
 typedef struct servoCalibration_s {
     uint8_t active;
@@ -86,12 +121,21 @@ typedef struct servoCalibration_s {
     uint16_t gyroPeakSum;
 } servoCalibration_t;
 
+typedef struct thrTrqCalibration_s {
+    uint32_t timestamp_ms;
+    uint32_t lastAdjTime_ms;
+    thrTrqCalibState_e state;
+} thrTrqCalibration_t;
+
 #endif
 
 #ifdef USE_SERVOS
 extern float dT;
+extern master_t masterConfig;
 
-static servoCalibration_t servoCalib = {.state = IDLE};
+u32 blackboxStatus;
+static servoCalibration_t servoCalib = {.state = SC_IDLE};
+static thrTrqCalibration_t thrTrqCalib = {.state = SC_IDLE};
 static int16_t tailServoMaxYawForce = 0;
 static float tailServoThrustFactor = 0;
 static int16_t tailServoMaxAngle = 0;
@@ -108,6 +152,7 @@ static servoParam_t * gpTailServoConf;
 static int16_t *gpTailServo;
 static mixerConfig_t *gpMixerConfig;
 
+static void initCurves();
 static uint16_t getServoValueAtAngle(servoParam_t * servoConf, uint16_t angle);
 static float getPitchCorrectionAtTailAngle(float angle);
 static uint16_t getAngleFromYawCurveAtForce(int16_t force);
@@ -120,6 +165,7 @@ static uint16_t getPitchCorrectionMaxPhaseShift(int16_t servoAngle,
 static int16_t getGyroSum();
 static void virtualServoStep(float dT, servoParam_t *servoConf, uint16_t servoValue);
 static void triServoCalibrationStep();
+static void triThrustTorqueCalibrationStep();
 
 #endif
 
@@ -129,11 +175,18 @@ void triInitMixer(servoParam_t *pTailServoConfig,
 {
     gpTailServoConf = pTailServoConfig;
     gpTailServo = pTailServo;
-
     tailServoThrustFactor = mixerConfig->tri_tail_motor_thrustfactor / 10.0f;
     tailServoMaxAngle = mixerConfig->tri_servo_angle_at_max;
     tailServoSpeed = mixerConfig->tri_tail_servo_speed;
     gpMixerConfig = mixerConfig;
+
+    uint32_t time = millis();
+    initCurves();
+    debug[0] = millis() - time;
+}
+
+static void initCurves()
+{
     // DERIVATE(1/(sin(x)-cos(x)/tailServoThrustFactor)) = 0
     // Multiplied by 10 to get decidegrees
     tailMotorPitchZeroAngle = 10.0f * 2.0f * (atanf(((sqrtf(tailServoThrustFactor * tailServoThrustFactor + 1) + 1) / tailServoThrustFactor)));
@@ -188,6 +241,7 @@ void triServoMixer()
     if (ARMING_FLAG(ARMED))
     {
         *gpTailServo = triGetLinearServoValue(gpTailServoConf, *gpTailServo);
+        triThrustTorqueCalibrationStep();
     }
     else
     {
@@ -342,18 +396,18 @@ static void triServoCalibrationStep()
 
     switch(servoCalib.state)
     {
-    case IDLE:
+    case SC_IDLE:
         if (IS_RC_MODE_ACTIVE(BOXTAILTUNE))
         {
             ENABLE_FLIGHT_MODE(TAILTUNE_MODE);
-            servoCalib.state = INIT;
+            servoCalib.state = SC_INIT;
             servoCalib.firstTime = true;
             servoCalib.baseTime = 0;
             servoCalib.counterLimit = 5;
             servoCalib.gyroPeakSum = 0;
         }
         break;
-    case INIT:
+    case SC_INIT:
         servoCalib.active = 1;
         servoCalib.numOfMeasurements = 0;
         servoCalib.counter = 0;
@@ -363,12 +417,12 @@ static void triServoCalibrationStep()
         servoCalib.lowestMeasurement = 10000.0f;
         servoCalib.highestMeasurement = 0.0f;
         servoCalib.timestamp_us = micros();
-        servoCalib.state = LISTEN_SILENCE;
+        servoCalib.state = SC_LISTEN_SILENCE;
         break;
-    case LISTEN_SILENCE:
-        if (IsDelayElapsed(servoCalib.timestamp_us, 500000))
+    case SC_LISTEN_SILENCE:
+        if (IsDelayElapsed_us(servoCalib.timestamp_us, 500000))
         {
-            if (!IsDelayElapsed(servoCalib.timestamp_us, 2000000))
+            if (!IsDelayElapsed_us(servoCalib.timestamp_us, 2000000))
             {
                 servoCalib.maxGyroSumIdle = MAX(servoCalib.maxGyroSumIdle, getGyroSum());
             }
@@ -383,43 +437,43 @@ static void triServoCalibrationStep()
                 else
                 {
                     servoCalib.timestamp_us = micros();
-                    servoCalib.state = SERVO_TO_START;
+                    servoCalib.state = SC_SERVO_TO_START;
                     servoCalib.servoPosition = gpTailServoConf->max;
                     servoCalib.maxGyroSumIdle += 6;
                 }
             }
         }
         break;
-    case SERVO_TO_START:
-        if (IsDelayElapsed(servoCalib.timestamp_us, 2000000))
+    case SC_SERVO_TO_START:
+        if (IsDelayElapsed_us(servoCalib.timestamp_us, 2000000))
         {
             servoCalib.timestamp_us = micros();
-            servoCalib.state = DETECT_START;
+            servoCalib.state = SC_DETECT_START;
             servoCalib.servoPosition = gpTailServoConf->min;
         }
         break;
-    case DETECT_START:
+    case SC_DETECT_START:
         gyroSum = getGyroSum();
         if (servoCalib.firstTime)
         {
             if (gyroSum > servoCalib.maxGyroSumIdle)
             {
                 servoCalib.timestamp_us = micros();
-                servoCalib.state = DETECT_END;
+                servoCalib.state = SC_DETECT_END;
             }
         }
         else
         {
-            if (IsDelayElapsed(servoCalib.timestamp_us, servoCalib.baseTime))
+            if (IsDelayElapsed_us(servoCalib.timestamp_us, servoCalib.baseTime))
             {
                 if (gyroSum > servoCalib.gyroPeakSum)
                 {
-                    servoCalib.state = DETECT_END;
+                    servoCalib.state = SC_DETECT_END;
                 }
             }
         }
         break;
-    case DETECT_END:
+    case SC_DETECT_END:
         gyroSum = getGyroSum();
 
         if (servoCalib.firstTime)
@@ -437,7 +491,7 @@ static void triServoCalibrationStep()
                     servoCalib.baseTime = (uint32_t)((micros() - servoCalib.timestamp_us) * 0.5f);
                     servoCalib.firstTime = false;
                     servoCalib.counterLimit = 0;
-                    servoCalib.state = INIT;
+                    servoCalib.state = SC_INIT;
                 }
                 else
                 {
@@ -452,12 +506,12 @@ static void triServoCalibrationStep()
 
                     if (servoCalib.numOfMeasurements >= SERVO_CALIB_NUM_OF_MEAS)
                     {
-                        servoCalib.state = CHECK_RESULTS;
+                        servoCalib.state = SC_CHECK_RESULTS;
                     }
                     else
                     {
                         servoCalib.timestamp_us = micros();
-                        servoCalib.state = SERVO_TO_START;
+                        servoCalib.state = SC_SERVO_TO_START;
                         servoCalib.servoPosition = gpTailServoConf->max;
                     }
                 }
@@ -471,10 +525,10 @@ static void triServoCalibrationStep()
             }
         }
         break;
-    case CHECK_RESULTS:
+    case SC_CHECK_RESULTS:
         if ((servoCalib.highestMeasurement - servoCalib.lowestMeasurement) > 30.0f)
         {
-            servoCalib.state = INIT;
+            servoCalib.state = SC_INIT;
         }
         else
         {
@@ -482,16 +536,78 @@ static void triServoCalibrationStep()
             saveConfigAndNotify();
             DISABLE_FLIGHT_MODE(TAILTUNE_MODE);
             servoCalib.active = 0;
-            servoCalib.state = DONE;
+            servoCalib.state = SC_DONE;
             servoCalib.servoPosition = DEFAULT_SERVO_MIDDLE;
         }
         break;
-    case DONE:
+    case SC_DONE:
         if (!IS_RC_MODE_ACTIVE(BOXTAILTUNE))
         {
-            servoCalib.state = IDLE;
+            servoCalib.state = SC_IDLE;
         }
         break;
     }
+}
+
+static void triThrustTorqueCalibrationStep()
+{
+    if (!IS_RC_MODE_ACTIVE(BOXTAILTUNE))
+    {
+        return;
+    }
+    throttleStatus_e throttleStatus = calculateThrottleStatus(&masterConfig.rxConfig, masterConfig.flight3DConfig.deadband3d_throttle);
+
+    switch(thrTrqCalib.state)
+    {
+    case TTC_IDLE:
+        if (throttleStatus == THROTTLE_HIGH)
+        {
+            thrTrqCalib.state = TTC_ACTIVE;
+            thrTrqCalib.timestamp_ms = millis();
+            thrTrqCalib.lastAdjTime_ms = millis();
+        }
+        break;
+    case TTC_ACTIVE:
+        if ((throttleStatus == THROTTLE_HIGH) &&
+            isRcAxisWithinDeadband(ROLL) &&
+            isRcAxisWithinDeadband(PITCH) &&
+            isRcAxisWithinDeadband(YAW))
+        {
+            if (IsDelayElapsed_ms(thrTrqCalib.timestamp_ms, 500))
+            {
+                // RC commands have been within deadbands for 500ms
+                if (IsDelayElapsed_ms(thrTrqCalib.lastAdjTime_ms, 500))
+                {
+                    thrTrqCalib.lastAdjTime_ms = millis();
+                    if (axisPID_I[YAW] < 5)
+                    {
+                        tailServoThrustFactor += 1;
+                        initCurves();
+                    }
+                    else if (axisPID_I[YAW] > 5)
+                    {
+                        tailServoThrustFactor -= 1;
+                        initCurves();
+                    }
+                    else
+                    {
+                        thrTrqCalib.state = TTC_DONE;
+                    }
+                }
+            }
+        }
+        else
+        {
+            thrTrqCalib.timestamp_ms = millis();
+        }
+        break;
+    case TTC_DONE:
+        if (gpMixerConfig->tri_tail_motor_thrustfactor != tailServoThrustFactor)
+        {
+            gpMixerConfig->tri_tail_motor_thrustfactor = tailServoThrustFactor;
+        }
+        break;
+    }
+
 }
 
