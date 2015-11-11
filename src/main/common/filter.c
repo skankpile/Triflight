@@ -13,12 +13,14 @@
 #include "common/filter.h"
 #include "common/axis.h"
 
+#include "debug.h"
 
 // PT1 Low Pass filter (when no dT specified it will be calculated from the cycleTime)
 float filterApplyPt1(float input, filterStatePt1_t *filter, uint8_t f_cut, float dT) {
 
 	// Pre calculate and store RC
 	if (!filter->RC) {
+	    debug[3] = 100;
 		filter->RC = 1.0f / ( 2.0f * (float)M_PI * f_cut );
 	}
 

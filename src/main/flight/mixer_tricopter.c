@@ -49,6 +49,8 @@
 #include "config/runtime_config.h"
 #include "config/config.h"
 
+#include "common/filter.h"
+
 
 #ifdef USE_SERVOS
 #define TRI_TAIL_SERVO_ANGLE_MID (900)
@@ -83,7 +85,6 @@ typedef struct servoCalibration_s {
     bool firstTime;
     uint32_t baseTime;
     uint8_t counterLimit;
-    uint16_t gyroPeakSum;
 } servoCalibration_t;
 
 #endif
@@ -117,7 +118,7 @@ static uint16_t getPitchCorrectionMaxPhaseShift(int16_t servoAngle,
         int16_t motorAccelerationDelayAngle,
         int16_t motorDecelerationDelayAngle,
         int16_t motorDirectionChangeAngle);
-static int16_t getGyroSum();
+static uint16_t getGyroSum();
 static void virtualServoStep(float dT, servoParam_t *servoConf, uint16_t servoValue);
 static void triServoCalibrationStep();
 
@@ -178,9 +179,11 @@ uint16_t triGetLinearServoValue(servoParam_t *servoConf, uint16_t servoValue)
     return getServoValueAtAngle(servoConf, correctedAngle);
 }
 
-static int16_t getGyroSum()
+static uint16_t getGyroSum()
 {
-    return ABS(gyroADC[X]) + ABS(gyroADC[Y]) + ABS(gyroADC[Z]);
+    static filterStatePt1_t filter;
+    uint16_t sum = ABS(gyroADC[X]) + ABS(gyroADC[Y]) + ABS(gyroADC[Z]);
+    return (uint16_t)filterApplyPt1(sum, &filter, 120, dT);
 }
 
 void triServoMixer()
@@ -336,6 +339,8 @@ static void virtualServoStep(float dT, servoParam_t *servoConf, uint16_t servoVa
     }
 }
 
+uint16_t gyroSamples[1100];
+uint16_t gyroSamplesIndex=50;
 static void triServoCalibrationStep()
 {
     uint16_t gyroSum;
@@ -359,8 +364,7 @@ static void triServoCalibrationStep()
             servoCalib.state = INIT;
             servoCalib.firstTime = true;
             servoCalib.baseTime = 0;
-            servoCalib.counterLimit = 5;
-            servoCalib.gyroPeakSum = 0;
+            servoCalib.counterLimit = 14;
         }
         break;
     case INIT:
@@ -395,7 +399,7 @@ static void triServoCalibrationStep()
                     servoCalib.timestamp_us = micros();
                     servoCalib.state = SERVO_TO_START;
                     servoCalib.servoPosition = gpTailServoConf->max;
-                    servoCalib.maxGyroSumIdle += 10;
+                    servoCalib.maxGyroSumIdle += 20;
                 }
             }
         }
@@ -422,31 +426,23 @@ static void triServoCalibrationStep()
         {
             if (IsDelayElapsed(servoCalib.timestamp_us, servoCalib.baseTime))
             {
-                if (gyroSum > servoCalib.gyroPeakSum)
-                {
-                    servoCalib.state = DETECT_END;
-                }
+                servoCalib.state = DETECT_END;
             }
         }
         break;
     case DETECT_END:
         gyroSum = getGyroSum();
 
-        if (servoCalib.firstTime)
-        {
-            servoCalib.gyroPeakSum = MAX(servoCalib.gyroPeakSum, gyroSum);
-        }
         if (gyroSum <= servoCalib.maxGyroSumIdle)
         {
             servoCalib.counter++;
-            if (servoCalib.counter > servoCalib.counterLimit)
+            if (servoCalib.counter >= servoCalib.counterLimit)
             {
                 if (servoCalib.firstTime)
                 {
-                    servoCalib.gyroPeakSum = (uint16_t)(servoCalib.gyroPeakSum * 0.7f);
-                    servoCalib.baseTime = (uint32_t)((micros() - servoCalib.timestamp_us) * 0.5f);
+                    servoCalib.baseTime = (uint32_t)((micros() - servoCalib.timestamp_us) * 0.7f);
                     servoCalib.firstTime = false;
-                    servoCalib.counterLimit = 3;
+                    servoCalib.counterLimit = 2;
                     servoCalib.state = INIT;
                 }
                 else
@@ -483,7 +479,7 @@ static void triServoCalibrationStep()
         }
         break;
     case CHECK_RESULTS:
-        if ((servoCalib.highestMeasurement - servoCalib.lowestMeasurement) > 30.0f)
+        if ((servoCalib.highestMeasurement - servoCalib.lowestMeasurement) > 40.0f)
         {
             servoCalib.state = INIT;
         }
@@ -504,7 +500,5 @@ static void triServoCalibrationStep()
         }
         break;
     }
-    debug[0] = servoCalib.baseTime / 1000;
-    debug[1] = servoCalib.gyroPeakSum;
 }
 
