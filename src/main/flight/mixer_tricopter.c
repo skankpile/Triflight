@@ -503,7 +503,6 @@ static void triServoCalibrationStep()
             servoCalib.state = IDLE;
         }
         break;
-
     }
     debug[0] = servoCalib.baseTime / 1000;
     debug[1] = servoCalib.gyroPeakSum;
