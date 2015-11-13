@@ -835,9 +835,9 @@ void mixTable(void)
             }
         }
     } else {
-		for (i = 0; i < motorCount; i++) {
-			motor[i] = motor_disarmed[i];
-		}
+        for (i = 0; i < motorCount; i++) {
+            motor[i] = motor_disarmed[i];
+        }
     }
 
     // motor outputs are used as sources for servo mixing, so motors must be calculated before servos.
