@@ -28,4 +28,6 @@ void triServoMixer();
 
 int16_t triGetMotorCorrection(uint8_t motorIndex);
 
+uint8_t triUnarmedServoEnabled();
+
 #endif /* SRC_MAIN_FLIGHT_MIXER_TRICOPTER_H_ */

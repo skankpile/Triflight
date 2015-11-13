@@ -53,6 +53,8 @@
 #define TRI_YAW_FORCE_CURVE_SIZE (100)
 #define TRI_TAIL_SERVO_MAX_ANGLE (500)
 
+#define TRI_SERVO_MOTOR_INDEX_UNARMED	(3)
+
 // These need to be configurable
 #define TRI_TAIL_MOTOR_CURVE_MAX_PHASE_SHIFT 150
 
@@ -65,6 +67,7 @@ static int16_t tailServoMaxYawForce = 0;
 static float tailServoThrustFactor = 0;
 static int16_t tailServoMaxAngle = 0;
 static int16_t tailServoSpeed = 0;
+static bool tailServoUnarmedEnabled = 0;
 static float virtualServoAngle = TRI_TAIL_SERVO_ANGLE_MID / 10.0f;
 static int16_t yawForceCurve[TRI_YAW_FORCE_CURVE_SIZE];
 static int16_t tailMotorPitchZeroAngle;
@@ -148,6 +151,20 @@ void triServoMixer()
     {
         *gpTailServo = triGetLinearServoValue(gpTailServoConf, *gpTailServo);
     }
+    else
+    {
+    	int16_t servoDisarmed = motor_disarmed[TRI_SERVO_MOTOR_INDEX_UNARMED];
+    	if ((servoDisarmed >= gpTailServoConf->min) &&
+    		(servoDisarmed >= gpTailServoConf->max))
+    	{
+    		*gpTailServo = servoDisarmed;
+    		tailServoUnarmedEnabled = true;
+    	}
+    	else
+    	{
+    		tailServoUnarmedEnabled = false;
+    	}
+    }
 
     virtualServoStep(dT, gpTailServoConf, *gpTailServo);
 }
@@ -177,6 +194,11 @@ int16_t triGetMotorCorrection(uint8_t motorIndex)
     }
 
     return correction;
+}
+
+uint8_t triUnarmedServoEnabled()
+{
+	return tailServoUnarmedEnabled;
 }
 
 static uint16_t getServoValueAtAngle(servoParam_t *servoConf, uint16_t angle)

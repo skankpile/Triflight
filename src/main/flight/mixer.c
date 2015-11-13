@@ -580,7 +580,7 @@ void writeServos(void)
 
         case MIXER_TRI:
         case MIXER_CUSTOM_TRI:
-            if (mixerConfig->tri_unarmed_servo) {
+            if (mixerConfig->tri_unarmed_servo || triUnarmedServoEnabled()) {
                 // if unarmed flag set, we always move servo
                 pwmWriteServo(servoIndex++, servo[SERVO_RUDDER]);
             } else {
@@ -835,9 +835,9 @@ void mixTable(void)
             }
         }
     } else {
-        for (i = 0; i < motorCount; i++) {
-            motor[i] = motor_disarmed[i];
-        }
+		for (i = 0; i < motorCount; i++) {
+			motor[i] = motor_disarmed[i];
+		}
     }
 
     // motor outputs are used as sources for servo mixing, so motors must be calculated before servos.
