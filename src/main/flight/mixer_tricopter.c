@@ -245,7 +245,7 @@ void triServoMixer()
     }
     else
     {
-        triServoCalibrationStep();
+        //triServoCalibrationStep();
         if (servoCalib.active)
         {
             *gpTailServo = servoCalib.servoPosition;
@@ -548,7 +548,7 @@ static void triServoCalibrationStep()
         break;
     }
 }
-
+extern void blackboxLogInflightAdjustmentEventFloat(adjustmentFunction_e adjustmentFunction, float newFloatValue);
 static void triThrustTorqueCalibrationStep()
 {
     if (!IS_RC_MODE_ACTIVE(BOXTAILTUNE))
@@ -562,6 +562,8 @@ static void triThrustTorqueCalibrationStep()
     case TTC_IDLE:
         if (throttleStatus == THROTTLE_HIGH)
         {
+            beeperConfirmationBeeps(3);
+            blackboxLogInflightAdjustmentEventFloat(ADJUSTMENT_YAW_P, 1.0f);
             thrTrqCalib.state = TTC_ACTIVE;
             thrTrqCalib.timestamp_ms = millis();
             thrTrqCalib.lastAdjTime_ms = millis();
@@ -581,11 +583,15 @@ static void triThrustTorqueCalibrationStep()
                     thrTrqCalib.lastAdjTime_ms = millis();
                     if (axisPID_I[YAW] < 5)
                     {
+                        blackboxLogInflightAdjustmentEventFloat(ADJUSTMENT_YAW_I, tailServoThrustFactor);
+                        beeperConfirmationBeeps(2);
                         tailServoThrustFactor += 1;
                         initCurves();
                     }
                     else if (axisPID_I[YAW] > 5)
                     {
+                        blackboxLogInflightAdjustmentEventFloat(ADJUSTMENT_YAW_I, tailServoThrustFactor);
+                        beeperConfirmationBeeps(1);
                         tailServoThrustFactor -= 1;
                         initCurves();
                     }

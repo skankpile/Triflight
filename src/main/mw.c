@@ -934,4 +934,6 @@ bool isRcAxisWithinDeadband(int32_t axis)
             ret = true;
         }
     }
+
+    return ret;
 }
