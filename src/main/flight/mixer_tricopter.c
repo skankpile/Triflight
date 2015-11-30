@@ -58,41 +58,43 @@
 #define TRI_TAIL_SERVO_MAX_ANGLE (500)
 
 #define SERVO_CALIB_NUM_OF_MEAS (5)
-#define IsDelayElapsed(timestamp_us, delay_us) ((uint32_t)(micros() - timestamp_us) >= delay_us)
+#define IsDelayElapsed_us(timestamp_us, delay_us) ((uint32_t)(micros() - timestamp_us) >= delay_us)
 
 typedef enum {
-    IDLE = 0,
-    INIT,
-    LISTEN_SILENCE,
-    SERVO_TO_START,
-    DETECT_START,
-    DETECT_END,
-    CHECK_RESULTS,
-    DONE
+    SC_IDLE = 0,
+    SC_INIT,
+    SC_LISTEN_SILENCE,
+    SC_SERVO_TO_START,
+    SC_DETECT_START,
+    SC_DETECT_END,
+    SC_CHECK_RESULTS,
+    SC_DONE
 } servoCalibState_e;
 
 typedef struct servoCalibration_s {
-    bool active;
+    uint8_t active;
     uint8_t numOfMeasurements;
     uint8_t counter;
     uint16_t servoPosition;
     int16_t maxGyroSumIdle;
     servoCalibState_e state;
     uint16_t sumMeasurements;
-    uint16_t lowestMeasurement;
-    uint16_t highestMeasurement;
+    float lowestMeasurement;
+    float highestMeasurement;
     uint32_t timestamp_us;
     bool firstTime;
     uint32_t baseTime;
     uint8_t counterLimit;
+    uint16_t gyroPeakSum;
 } servoCalibration_t;
+
 
 #endif
 
 #ifdef USE_SERVOS
 extern float dT;
 
-static servoCalibration_t servoCalib = {.state = IDLE, .active = false};
+static servoCalibration_t servoCalib = {.state = SC_IDLE, .active = false};
 static int16_t tailServoMaxYawForce = 0;
 static float tailServoThrustFactor = 0;
 static int16_t tailServoMaxAngle = 0;
@@ -351,38 +353,39 @@ static void triServoCalibrationStep()
         {
             servoCalib.active = false;
             DISABLE_FLIGHT_MODE(TAILTUNE_MODE);
-            servoCalib.state = IDLE;
+            servoCalib.state = SC_IDLE;
         }
     }
 
     switch(servoCalib.state)
     {
-    case IDLE:
+    case SC_IDLE:
         if (IS_RC_MODE_ACTIVE(BOXTAILTUNE))
         {
             ENABLE_FLIGHT_MODE(TAILTUNE_MODE);
-            servoCalib.state = INIT;
+            servoCalib.state = SC_INIT;
             servoCalib.firstTime = true;
             servoCalib.baseTime = 0;
-            servoCalib.counterLimit = 14;
+            servoCalib.counterLimit = 5;
+            servoCalib.gyroPeakSum = 0;
         }
         break;
-    case INIT:
-        servoCalib.active = true;
+    case SC_INIT:
+        servoCalib.active = 1;
         servoCalib.numOfMeasurements = 0;
         servoCalib.counter = 0;
         servoCalib.servoPosition = DEFAULT_SERVO_MIDDLE;
         servoCalib.maxGyroSumIdle = 0;
-        servoCalib.sumMeasurements = 0;
-        servoCalib.lowestMeasurement = 10000;
-        servoCalib.highestMeasurement = 0;
+        servoCalib.sumMeasurements = 0.0f;
+        servoCalib.lowestMeasurement = 10000.0f;
+        servoCalib.highestMeasurement = 0.0f;
         servoCalib.timestamp_us = micros();
-        servoCalib.state = LISTEN_SILENCE;
+        servoCalib.state = SC_LISTEN_SILENCE;
         break;
-    case LISTEN_SILENCE:
-        if (IsDelayElapsed(servoCalib.timestamp_us, 500000))
+    case SC_LISTEN_SILENCE:
+        if (IsDelayElapsed_us(servoCalib.timestamp_us, 500000))
         {
-            if (!IsDelayElapsed(servoCalib.timestamp_us, 2000000))
+            if (!IsDelayElapsed_us(servoCalib.timestamp_us, 2000000))
             {
                 servoCalib.maxGyroSumIdle = MAX(servoCalib.maxGyroSumIdle, getGyroSum());
             }
@@ -397,60 +400,67 @@ static void triServoCalibrationStep()
                 else
                 {
                     servoCalib.timestamp_us = micros();
-                    servoCalib.state = SERVO_TO_START;
+                    servoCalib.state = SC_SERVO_TO_START;
                     servoCalib.servoPosition = gpTailServoConf->max;
-                    servoCalib.maxGyroSumIdle += 20;
+                    servoCalib.maxGyroSumIdle += 6;
                 }
             }
         }
         break;
-    case SERVO_TO_START:
-        if (IsDelayElapsed(servoCalib.timestamp_us, 2000000))
+    case SC_SERVO_TO_START:
+        if (IsDelayElapsed_us(servoCalib.timestamp_us, 2000000))
         {
             servoCalib.timestamp_us = micros();
-            servoCalib.state = DETECT_START;
+            servoCalib.state = SC_DETECT_START;
             servoCalib.servoPosition = gpTailServoConf->min;
         }
         break;
-    case DETECT_START:
+    case SC_DETECT_START:
         gyroSum = getGyroSum();
         if (servoCalib.firstTime)
         {
             if (gyroSum > servoCalib.maxGyroSumIdle)
             {
                 servoCalib.timestamp_us = micros();
-                servoCalib.state = DETECT_END;
+                servoCalib.state = SC_DETECT_END;
             }
         }
         else
         {
-            if (IsDelayElapsed(servoCalib.timestamp_us, servoCalib.baseTime))
+            if (IsDelayElapsed_us(servoCalib.timestamp_us, servoCalib.baseTime))
             {
-                servoCalib.state = DETECT_END;
+                if (gyroSum > servoCalib.gyroPeakSum)
+                {
+                    servoCalib.state = SC_DETECT_END;
+                }
             }
         }
         break;
-    case DETECT_END:
+    case SC_DETECT_END:
         gyroSum = getGyroSum();
 
+        if (servoCalib.firstTime)
+        {
+            servoCalib.gyroPeakSum = MAX(servoCalib.gyroPeakSum, gyroSum);
+        }
         if (gyroSum <= servoCalib.maxGyroSumIdle)
         {
             servoCalib.counter++;
-            if (servoCalib.counter >= servoCalib.counterLimit)
+            if (servoCalib.counter > servoCalib.counterLimit)
             {
                 if (servoCalib.firstTime)
                 {
-                    servoCalib.baseTime = (uint32_t)((micros() - servoCalib.timestamp_us) * 0.7f);
+                    servoCalib.gyroPeakSum = (uint16_t)(servoCalib.gyroPeakSum * 0.5f);
+                    servoCalib.baseTime = (uint32_t)((micros() - servoCalib.timestamp_us) * 0.5f);
                     servoCalib.firstTime = false;
-                    servoCalib.counterLimit = 2;
-                    servoCalib.state = INIT;
+                    servoCalib.counterLimit = 0;
+                    servoCalib.state = SC_INIT;
                 }
                 else
                 {
                     // done
                     float time = (micros() - servoCalib.timestamp_us) / 1000000.0f;
                     float speed = (2.0f * tailServoMaxAngle / 10.0f) / time;
-                    debug[2] = (int16_t)speed;
                     servoCalib.sumMeasurements += (uint16_t)speed;
 
                     servoCalib.lowestMeasurement = MIN(speed, servoCalib.lowestMeasurement);
@@ -459,12 +469,12 @@ static void triServoCalibrationStep()
 
                     if (servoCalib.numOfMeasurements >= SERVO_CALIB_NUM_OF_MEAS)
                     {
-                        servoCalib.state = CHECK_RESULTS;
+                        servoCalib.state = SC_CHECK_RESULTS;
                     }
                     else
                     {
                         servoCalib.timestamp_us = micros();
-                        servoCalib.state = SERVO_TO_START;
+                        servoCalib.state = SC_SERVO_TO_START;
                         servoCalib.servoPosition = gpTailServoConf->max;
                     }
                 }
@@ -478,10 +488,10 @@ static void triServoCalibrationStep()
             }
         }
         break;
-    case CHECK_RESULTS:
-        if ((servoCalib.highestMeasurement - servoCalib.lowestMeasurement) > 40.0f)
+    case SC_CHECK_RESULTS:
+        if ((servoCalib.highestMeasurement - servoCalib.lowestMeasurement) > 30.0f)
         {
-            servoCalib.state = INIT;
+            servoCalib.state = SC_INIT;
         }
         else
         {
@@ -489,16 +499,17 @@ static void triServoCalibrationStep()
             saveConfigAndNotify();
             DISABLE_FLIGHT_MODE(TAILTUNE_MODE);
             servoCalib.active = 0;
-            servoCalib.state = DONE;
+            servoCalib.state = SC_DONE;
             servoCalib.servoPosition = DEFAULT_SERVO_MIDDLE;
         }
         break;
-    case DONE:
+    case SC_DONE:
         if (!IS_RC_MODE_ACTIVE(BOXTAILTUNE))
         {
-            servoCalib.state = IDLE;
+            servoCalib.state = SC_IDLE;
         }
         break;
     }
+
 }
 
