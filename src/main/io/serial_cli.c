@@ -73,6 +73,7 @@
 #include "flight/pid.h"
 #include "flight/imu.h"
 #include "flight/mixer.h"
+#include "flight/mixer_tricopter.h"
 #include "flight/navigation.h"
 #include "flight/failsafe.h"
 
@@ -598,7 +599,7 @@ const clivalue_t valueTable[] = {
     { "servo_lowpass_freq",         VAR_FLOAT  | MASTER_VALUE, &masterConfig.mixerConfig.servo_lowpass_freq, .config.minmax = { 10,  400} },
     { "servo_lowpass_enable",       VAR_INT8   | MASTER_VALUE | MODE_LOOKUP, &masterConfig.mixerConfig.servo_lowpass_enable, .config.lookup = { TABLE_OFF_ON } },
     { "tri_servo_angle_at_max",     VAR_INT16  | MASTER_VALUE, &masterConfig.mixerConfig.tri_servo_angle_at_max, .config.minmax = { 0, 500 } },
-    { "tri_tail_motor_thrustfactor",VAR_INT16   | MASTER_VALUE, &masterConfig.mixerConfig.tri_tail_motor_thrustfactor, .config.minmax = { -200, 200 } },
+    { "tri_tail_motor_thrustfactor",VAR_INT16  | MASTER_VALUE, &masterConfig.mixerConfig.tri_tail_motor_thrustfactor, .config.minmax = { TAIL_THRUST_FACTOR_MIN, TAIL_THRUST_FACTOR_MAX } },
     { "tri_tail_servo_speed",       VAR_INT16  | MASTER_VALUE, &masterConfig.mixerConfig.tri_tail_servo_speed, .config.minmax = { 0, 1000 } },
 #endif
 
