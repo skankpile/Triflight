@@ -24,3 +24,5 @@ void handleInflightCalibrationStickPosition();
 
 void mwDisarm(void);
 void mwArm(void);
+
+bool isRcAxisWithinDeadband(int32_t axis);

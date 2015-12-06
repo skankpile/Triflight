@@ -112,7 +112,7 @@ uint8_t motorControlEnable = false;
 int16_t telemTemperature1;      // gyro sensor temperature
 static uint32_t disarmAt;     // Time of automatic disarm when "Don't spin the motors when armed" is enabled and auto_disarm_delay is nonzero
 
-extern uint8_t dynP8[3], dynI8[3], dynD8[3], PIDweight[3];
+extern uint8_t dynP8[3], dynI8[3], dynD8[3], PIDweight[3], Iweigth[3];
 
 static bool isRXDataNew;
 
@@ -204,7 +204,7 @@ void filterRc(void){
 void annexCode(void)
 {
     int32_t tmp, tmp2;
-    int32_t axis, prop1 = 0, prop2, yawWeigth;
+    int32_t axis, prop1 = 0, prop2, yawPDWeigth, yawIWeigth;
 
     static uint32_t vbatLastServiced = 0;
     static uint32_t ibatLastServiced = 0;
@@ -221,28 +221,33 @@ void annexCode(void)
 
     // YAW dynamic PID adjustment
     if (rcData[THROTTLE] < currentControlRateProfile->tpa_yaw_breakpoint) {
-        yawWeigth = 100;
+        yawPDWeigth = 100;
     } else {
         if (rcData[THROTTLE] < 2000) {
             if (currentControlRateProfile->tpa_yaw_rate >= 100)
             {
-                yawWeigth = 100 + (uint16_t)(currentControlRateProfile->tpa_yaw_rate - 100) * (rcData[THROTTLE] - currentControlRateProfile->tpa_yaw_breakpoint) / (2000 - currentControlRateProfile->tpa_yaw_breakpoint);
+                yawPDWeigth = 100 + (uint16_t)(currentControlRateProfile->tpa_yaw_rate - 100) * (rcData[THROTTLE] - currentControlRateProfile->tpa_yaw_breakpoint) / (2000 - currentControlRateProfile->tpa_yaw_breakpoint);
             }
             else
             {
-                yawWeigth = 100 - (uint16_t)currentControlRateProfile->tpa_yaw_rate * (rcData[THROTTLE] - currentControlRateProfile->tpa_yaw_breakpoint) / (2000 - currentControlRateProfile->tpa_yaw_breakpoint);
+                yawPDWeigth = 100 - (uint16_t)currentControlRateProfile->tpa_yaw_rate * (rcData[THROTTLE] - currentControlRateProfile->tpa_yaw_breakpoint) / (2000 - currentControlRateProfile->tpa_yaw_breakpoint);
             }
         } else {
             if (currentControlRateProfile->tpa_yaw_rate >= 100)
             {
-                yawWeigth = currentControlRateProfile->tpa_yaw_rate;
+                yawPDWeigth = currentControlRateProfile->tpa_yaw_rate;
             }
             else
             {
-                yawWeigth = 100 - currentControlRateProfile->tpa_yaw_rate;
+                yawPDWeigth = 100 - currentControlRateProfile->tpa_yaw_rate;
             }
         }
     }
+
+    // YAW dynamic integral adjustment
+    // Attenuate integral term proportional to the stick position, 100% attenuation starting at full stick position
+    int32_t yawCommandFromCenter = ABS(rcData[YAW] - 1500);
+    yawIWeigth = MAX(0, (100 - (yawCommandFromCenter * 100 / 500)));
 
     for (axis = 0; axis < 3; axis++) {
         tmp = MIN(ABS(rcData[axis] - masterConfig.rxConfig.midrc), 500);
@@ -278,10 +283,12 @@ void annexCode(void)
 
         // non coupled PID reduction scaler used in PID controller 1 and PID controller 2. YAW TPA disabled. 100 means 100% of the pids
         if (axis == YAW) {
-            PIDweight[axis] = yawWeigth;
+            PIDweight[axis] = yawPDWeigth;
+            Iweigth[axis] = yawIWeigth;
         }
         else {
             PIDweight[axis] = prop2;
+            Iweigth[axis] = 100;
         }
 
         if (rcData[axis] < masterConfig.rxConfig.midrc)
@@ -914,4 +921,26 @@ void loop(void)
         updateLedStrip();
     }
 #endif
+}
+
+bool isRcAxisWithinDeadband(int32_t axis)
+{
+    int32_t tmp = MIN(ABS(rcData[axis] - masterConfig.rxConfig.midrc), 500);
+    bool ret = false;
+    if (axis == ROLL || axis == PITCH)
+    {
+        if (tmp <= currentProfile->rcControlsConfig.deadband)
+        {
+            ret = true;
+        }
+    }
+    else
+    {
+        if (tmp <= currentProfile->rcControlsConfig.yaw_deadband)
+        {
+            ret = true;
+        }
+    }
+
+    return ret;
 }
