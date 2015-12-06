@@ -18,14 +18,45 @@
 #ifndef SRC_MAIN_FLIGHT_MIXER_TRICOPTER_H_
 #define SRC_MAIN_FLIGHT_MIXER_TRICOPTER_H_
 
-void triInitMixer(const servoParam_t * const pTailServoConfig, const int16_t * pTailServo, mixerConfig_t *mixerConfig);
+#define TAIL_THRUST_FACTOR_MIN  (10)
+#define TAIL_THRUST_FACTOR_MAX  (400)
 
+#define TAIL_THRUST_FACTOR_MIN_FLOAT  (TAIL_THRUST_FACTOR_MIN / 10.0f)
+#define TAIL_THRUST_FACTOR_MAX_FLOAT  (TAIL_THRUST_FACTOR_MAX / 10.0f)
+
+/** @brief Initialize tricopter specific mixer functionality.
+ *
+ *  @param pTailServoConfig Pointer to tail servo configuration
+ *  when in tricopter mixer mode.
+ *  @param pTailServo Pointer to tail servo output value.
+ *  @param pMixerConfig Pointer to mixer configuration.
+ *  @return Void.
+ */
+void triInitMixer(servoParam_t *pTailServoConfig,
+        int16_t *pTailServo,
+        mixerConfig_t *pMixerConfig);
+
+/** @brief Get estimated tail servo angle (position).
+ *
+ *  @return Void.
+ */
 float triGetVirtualServoAngle();
 
-uint16_t triGetLinearServoValue(servoParam_t *servoConf, uint16_t servoValue);
-
+/** @brief Perform tricopter mixer actions.
+ *
+ *  @return Void.
+ */
 void triServoMixer();
 
+/** @brief Get amount of motor correction that must be applied
+ * for given motor.
+ *
+ * Needed correction amount is calculated based on current servo
+ * position to maintain pitch axis attitude.
+ *
+ *  @return Amount of motor correction that must be added to
+ *  motor output.
+ */
 int16_t triGetMotorCorrection(uint8_t motorIndex);
 
 #endif /* SRC_MAIN_FLIGHT_MIXER_TRICOPTER_H_ */
