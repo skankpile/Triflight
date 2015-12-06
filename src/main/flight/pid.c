@@ -49,6 +49,9 @@
 #include "config/runtime_config.h"
 #include "config/config_unittest.h"
 
+//! Integrator is disabled when rate error exceeds this limit
+#define LUXFLOAT_INTEGRATOR_DISABLE_LIMIT_DPS (30.0f)
+
 extern uint16_t cycleTime;
 extern uint8_t motorCount;
 extern float dT;
@@ -60,7 +63,7 @@ int32_t axisPID_P[3], axisPID_I[3], axisPID_D[3];
 #endif
 
 // PIDweight is a scale factor for PIDs which is derived from the throttle and TPA setting, and 100 = 100% scale means no PID reduction
-uint8_t dynP8[3], dynI8[3], dynD8[3], PIDweight[3];
+uint8_t dynP8[3], dynI8[3], dynD8[3], PIDweight[3], Iweigth[3] = {0};
 
 static int32_t errorGyroI[3] = { 0, 0, 0 };
 static float errorGyroIf[3] = { 0.0f, 0.0f, 0.0f };
@@ -182,8 +185,10 @@ static void pidLuxFloat(pidProfile_t *pidProfile, controlRateConfig_t *controlRa
             PTerm = filterApplyPt1(PTerm, &yawPTermState, pidProfile->yaw_pterm_cut_hz, dT);
         }
 
-        // -----calculate I component. Note that PIDweight is divided by 10, because it is simplified formule from the previous multiply by 10
-        errorGyroIf[axis] = constrainf(errorGyroIf[axis] + RateError * dT * pidProfile->I_f[axis] * 10, -500.0f, 500.0f);
+        if (fabsf(RateError) < LUXFLOAT_INTEGRATOR_DISABLE_LIMIT_DPS)
+        {
+            errorGyroIf[axis] = constrainf(errorGyroIf[axis] + RateError * dT * pidProfile->I_f[axis] * 10 * Iweigth[axis] / 100, -250.0f, 250.0f);
+        }
 
         // limit maximum integrator value to prevent WindUp - accumulating extreme values when system is saturated.
         // I coefficient (I8) moved before integration to make limiting independent from PID settings
