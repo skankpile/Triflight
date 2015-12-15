@@ -47,8 +47,17 @@
 
 #include "config/runtime_config.h"
 
+#include "debug.h"
+
+#include "mw.h"
+
 //! Integrator is disabled when rate error exceeds this limit
 #define LUXFLOAT_INTEGRATOR_DISABLE_LIMIT_DPS (30.0f)
+
+//typedef enum {
+//    GYRO_BASED = 0,
+//    ATTITUDE_BASED,
+//} yaw_mode_t;
 
 extern uint16_t cycleTime;
 extern uint8_t motorCount;
@@ -67,6 +76,8 @@ static int32_t errorGyroI[3] = { 0, 0, 0 };
 static float errorGyroIf[3] = { 0.0f, 0.0f, 0.0f };
 static int32_t errorAngleI[2] = { 0, 0 };
 static float errorAngleIf[2] = { 0.0f, 0.0f };
+
+//static yaw_mode_t gYawMode = GYRO_BASED;
 
 static void pidRewrite(pidProfile_t *pidProfile, controlRateConfig_t *controlRateConfig,
         uint16_t max_angle_inclination, rollAndPitchTrims_t *angleTrim, rxConfig_t *rxConfig);
@@ -99,11 +110,200 @@ void pidResetErrorGyro(void)
 const angle_index_t rcAliasToAngleIndexMap[] = { AI_ROLL, AI_PITCH };
 
 static filterStatePt1_t DTermState[3];
+static int16_t headingSetpoint[3];
+
+//float getYawSetpoint(uint8_t rate)
+//{
+//    static bool firstTime = true;
+//    float setpoint;
+//
+//    if (firstTime)
+//    {
+//        headingSetpoint = attitude.values.yaw;
+//        firstTime = false;
+//    }
+//    if ((attitude.values.roll > 600) || (attitude.values.pitch > 600))
+//    {
+//        // Gyro based
+//        gYawMode = GYRO_BASED;
+//        setpoint = (float)((rate + 10) * rcCommand[YAW]) / 50.0f;
+//        headingSetpoint = attitude.values.yaw;
+//    }
+//    else
+//    {
+//        // Attitude based
+//        gYawMode = ATTITUDE_BASED;
+//        headingSetpoint += rcCommand[YAW] * rate / 10 * dT;
+//
+//        int16_t diff = headingSetpoint - attitude.values.yaw;
+//
+//
+//        if (diff >= 1800)
+//        {
+//            headingSetpoint -= 3600;
+//        }
+//        else if (diff <= -1800)
+//        {
+//            headingSetpoint += 3600;
+//        }
+//        setpoint = headingSetpoint / 10.0f;
+//
+//    }
+//
+//    return setpoint;
+//}
+//
+//float getAxisFeedback(flight_dynamics_index_t axis)
+//{
+//    float feedback;
+//
+//    switch (axis)
+//    {
+//    case FD_YAW:
+//        if (gYawMode == ATTITUDE_BASED)
+//        {
+//            feedback = attitude.values.yaw / 10.0f;
+//            break;
+//        }
+//        // intentional fallthrough to default
+//    default:
+//        feedback = gyroADC[axis] * gyro.scale;
+//        break;
+//    }
+//
+//    return feedback;
+//}
+
+//float correctErrorSign(flight_dynamics_index_t axis, float error)
+//{
+//    switch (axis)
+//    {
+//    case FD_YAW:
+//        if (gYawMode == ATTITUDE_BASED)
+//        {
+//            error = -15.0f * error;
+//            break;
+//        }
+//        // intentional fallthrough to default
+//    default:
+//        break;
+//    }
+//
+//    return error;
+//}
+
+float getHeadingError(flight_dynamics_index_t axis)
+{
+    float headingError;
+    float direction = 1.0f;
+    int16_t axisHeading;
+
+    switch (axis)
+    {
+    case FD_ROLL:
+        axisHeading = attitude.values.roll;
+        direction = -1.0f;
+        break;
+    case FD_PITCH:
+        axisHeading = attitude.values.pitch;
+        direction = -1.0f;
+        break;
+    case FD_YAW:
+        axisHeading = attitude.values.yaw;
+        break;
+    default:
+        // Wrong parameter value
+        axisHeading = 0;
+        break;
+    }
+
+    if ((ABS(attitude.values.roll) < 600) && (ABS(attitude.values.pitch) < 600))
+    {
+        if (!isRcAxisWithinDeadband(axis))
+        {
+            // Axis stick is deflected, reset heading setpoint
+            headingSetpoint[axis] = axisHeading;
+            headingError = 0.0f;
+        }
+        else
+        {
+            int16_t angleDiff = axisHeading - headingSetpoint[axis];
+            if (angleDiff >= 1800)
+            {
+                angleDiff -= 3600;
+            }
+            else if (angleDiff <= -1800)
+            {
+                angleDiff += 3600;
+            }
+            headingError = direction * angleDiff;
+        }
+
+    }
+    else
+    {
+        // Not active when inverted
+        headingSetpoint[axis] = axisHeading;
+        headingError = 0.0f;
+    }
+//    switch (axis)
+//    {
+//    case FD_YAW:
+//        // Not active when inverted
+//        if ((attitude.values.roll < 600) || (attitude.values.pitch < 600))
+//        {
+//            if (!isRcAxisWithinDeadband(axis))
+//            {
+//                headingSetpoint[axis] = attitude.values.yaw;
+//            }
+//
+//            int16_t diff = attitude.values.yaw - headingSetpoint;
+//            if (diff >= 1800)
+//            {
+//                diff -= 3600;
+//            }
+//            else if (diff <= -1800)
+//            {
+//                diff += 3600;
+//            }
+//
+//            headingError = diff;
+//
+//            debug[0] = headingError;
+//            break;
+//        }
+//        else
+//        {
+//            headingSetpoint = attitude.values.yaw;
+//        }
+//        // intentional fallthrough to default
+//    default:
+//        break;
+//    }
+//    switch (axis)
+//    {
+//    case FD_ROLL:
+//        debug[0] = headingError;
+//        break;
+//    case FD_PITCH:
+//        debug[1] = headingError;
+//        break;
+//    case FD_YAW:
+//        debug[2] = headingError;
+//        break;
+//    default:
+//        // Wrong parameter value
+//        axisHeading = 0;
+//        break;
+//    }
+
+    return headingError;
+}
 
 static void pidLuxFloat(pidProfile_t *pidProfile, controlRateConfig_t *controlRateConfig,
         uint16_t max_angle_inclination, rollAndPitchTrims_t *angleTrim, rxConfig_t *rxConfig)
 {
-    float RateError, errorAngle, AngleRate, gyroRate;
+    float error, errorAngle, setpoint, feedback;
     float ITerm,PTerm,DTerm;
     int32_t stickPosAil, stickPosEle, mostDeflectedPos;
     static float lastError[3];
@@ -140,7 +340,7 @@ static void pidLuxFloat(pidProfile_t *pidProfile, controlRateConfig_t *controlRa
 
         if (axis == FD_YAW) {
             // YAW is always gyro-controlled (MAG correction is applied to rcCommand) 100dps to 1100dps max yaw rate
-            AngleRate = (float)((rate + 10) * rcCommand[YAW]) / 50.0f;
+            setpoint = (float)((rate + 10) * rcCommand[YAW]) / 50.0f;
          } else {
             // calculate error and limit the angle to the max inclination
 #ifdef GPS
@@ -153,41 +353,38 @@ static void pidLuxFloat(pidProfile_t *pidProfile, controlRateConfig_t *controlRa
 
             if (FLIGHT_MODE(ANGLE_MODE)) {
                 // it's the ANGLE mode - control is angle based, so control loop is needed
-                AngleRate = errorAngle * pidProfile->A_level;
+                setpoint = errorAngle * pidProfile->A_level;
             } else {
                 //control is GYRO based (ACRO and HORIZON - direct sticks control is applied to rate PID
-                AngleRate = (float)((rate + 20) * rcCommand[axis]) / 50.0f; // 200dps to 1200dps max roll/pitch rate
+                setpoint = (float)((rate + 20) * rcCommand[axis]) / 50.0f; // 200dps to 1200dps max roll/pitch rate
                 if (FLIGHT_MODE(HORIZON_MODE)) {
                     // mix up angle error to desired AngleRate to add a little auto-level feel
-                    AngleRate += errorAngle * pidProfile->H_level * horizonLevelStrength;
+                    setpoint += errorAngle * pidProfile->H_level * horizonLevelStrength;
                 }
             }
         }
 
-        gyroRate = gyroADC[axis] * gyro.scale; // gyro output scaled to dps
+        feedback = gyroADC[axis] * gyro.scale; // gyro output scaled to dps
 
         // --------low-level gyro-based PID. ----------
         // Used in stand-alone mode for ACRO, controlled by higher level regulators in other modes
         // -----calculate scaled error.AngleRates
         // multiplication of rcCommand corresponds to changing the sticks scaling here
-        RateError = AngleRate - gyroRate;
+        error = setpoint - feedback;
 
         // -----calculate P component
-        PTerm = RateError * pidProfile->P_f[axis] * PIDweight[axis] / 100;
+        PTerm = error * pidProfile->P_f[axis] * PIDweight[axis] / 100;
 
         // -----calculate I component.
-        if (fabsf(RateError) < LUXFLOAT_INTEGRATOR_DISABLE_LIMIT_DPS)
-        {
-            errorGyroIf[axis] = constrainf(errorGyroIf[axis] + RateError * dT * pidProfile->I_f[axis] * 10 * Iweigth[axis] / 100, -250.0f, 250.0f);
-        }
+        errorGyroIf[axis] = constrainf(errorGyroIf[axis] + (error + getHeadingError(axis)) * dT * pidProfile->I_f[axis] * 10 * Iweigth[axis] / 100, -250.0f, 250.0f);
 
         // limit maximum integrator value to prevent WindUp - accumulating extreme values when system is saturated.
         // I coefficient (I8) moved before integration to make limiting independent from PID settings
         ITerm = errorGyroIf[axis];
 
         //-----calculate D-term
-        delta = RateError - lastError[axis];
-        lastError[axis] = RateError;
+        delta = error - lastError[axis];
+        lastError[axis] = error;
 
         // Correct difference by cycle time. Cycle time is jittery (can be different 2 times), so calculated difference
         // would be scaled by different dt each time. Division by dT fixes that.
@@ -215,6 +412,7 @@ static void pidLuxFloat(pidProfile_t *pidProfile, controlRateConfig_t *controlRa
         axisPID_D[axis] = DTerm;
 #endif
     }
+
 }
 
 static void pidRewrite(pidProfile_t *pidProfile, controlRateConfig_t *controlRateConfig, uint16_t max_angle_inclination,
