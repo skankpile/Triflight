@@ -369,7 +369,7 @@ static bool blackboxIsOnlyLoggingIntraframes() {
     return masterConfig.blackbox_rate_num == 1 && masterConfig.blackbox_rate_denom == 32;
 }
 extern float triGetVirtualServoAngle();
-extern int16_t getHeadingSetPoint(uint8_t axis);
+extern float getHeadingSetPoint(uint8_t axis);
 
 static bool testBlackboxConditionUncached(FlightLogFieldCondition condition)
 {
@@ -933,7 +933,8 @@ static void loadMainState(void)
         blackboxCurrent->accSmooth[i] = accSmooth[i];
     }
 
-    blackboxCurrent->attitude[0] = getHeadingSetPoint(FD_YAW);
+    blackboxCurrent->attitude[0] = getHeadingSetPoint(FD_YAW) * 10;
+
     blackboxCurrent->attitude[1] = debug[3];
     blackboxCurrent->attitude[2] = attitude.values.yaw;
 
