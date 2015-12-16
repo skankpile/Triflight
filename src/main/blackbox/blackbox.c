@@ -79,6 +79,8 @@
 #include "blackbox.h"
 #include "blackbox_io.h"
 
+#include "debug.h"
+
 #define BLACKBOX_I_INTERVAL 32
 #define BLACKBOX_SHUTDOWN_TIMEOUT_MILLIS 200
 #define SLOW_FRAME_INTERVAL 4096
@@ -367,6 +369,7 @@ static bool blackboxIsOnlyLoggingIntraframes() {
     return masterConfig.blackbox_rate_num == 1 && masterConfig.blackbox_rate_denom == 32;
 }
 extern float triGetVirtualServoAngle();
+extern int16_t getHeadingSetPoint(uint8_t axis);
 
 static bool testBlackboxConditionUncached(FlightLogFieldCondition condition)
 {
@@ -930,8 +933,8 @@ static void loadMainState(void)
         blackboxCurrent->accSmooth[i] = accSmooth[i];
     }
 
-    blackboxCurrent->attitude[0] = attitude.values.roll;
-    blackboxCurrent->attitude[1] = attitude.values.pitch;
+    blackboxCurrent->attitude[0] = getHeadingSetPoint(FD_YAW);
+    blackboxCurrent->attitude[1] = debug[3];
     blackboxCurrent->attitude[2] = attitude.values.yaw;
 
     for (i = 0; i < motorCount; i++) {

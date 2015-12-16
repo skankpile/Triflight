@@ -192,6 +192,11 @@ static int16_t headingSetpoint[3];
 //    return error;
 //}
 
+int16_t getHeadingSetPoint(uint8_t axis)
+{
+    return headingSetpoint[axis];
+}
+
 float getHeadingError(flight_dynamics_index_t axis)
 {
     float headingError;
@@ -201,10 +206,12 @@ float getHeadingError(flight_dynamics_index_t axis)
     switch (axis)
     {
     case FD_ROLL:
+        return 0.0f;
         axisHeading = attitude.values.roll;
         direction = -1.0f;
         break;
     case FD_PITCH:
+        return 0.0f;
         axisHeading = attitude.values.pitch;
         direction = -1.0f;
         break;
@@ -219,14 +226,17 @@ float getHeadingError(flight_dynamics_index_t axis)
 
     if ((ABS(attitude.values.roll) < 600) && (ABS(attitude.values.pitch) < 600))
     {
+        debug[3] = 1;
         if (!isRcAxisWithinDeadband(axis))
         {
+            debug[3] = 2;
             // Axis stick is deflected, reset heading setpoint
             headingSetpoint[axis] = axisHeading;
             headingError = 0.0f;
         }
         else
         {
+            debug[3] = 3;
             int16_t angleDiff = axisHeading - headingSetpoint[axis];
             if (angleDiff >= 1800)
             {
@@ -236,12 +246,13 @@ float getHeadingError(flight_dynamics_index_t axis)
             {
                 angleDiff += 3600;
             }
-            headingError = direction * angleDiff;
+            headingError = direction * angleDiff / 5.0f;
         }
 
     }
     else
     {
+        debug[3] = 4;
         // Not active when inverted
         headingSetpoint[axis] = axisHeading;
         headingError = 0.0f;
@@ -296,14 +307,14 @@ float getHeadingError(flight_dynamics_index_t axis)
 //        axisHeading = 0;
 //        break;
 //    }
-
+//    debug[2] = headingError;
     return headingError;
 }
 
 static void pidLuxFloat(pidProfile_t *pidProfile, controlRateConfig_t *controlRateConfig,
         uint16_t max_angle_inclination, rollAndPitchTrims_t *angleTrim, rxConfig_t *rxConfig)
 {
-    float error, errorAngle, setpoint, feedback;
+    float rateError, errorAngle, setpoint, feedback;
     float ITerm,PTerm,DTerm;
     int32_t stickPosAil, stickPosEle, mostDeflectedPos;
     static float lastError[3];
@@ -370,21 +381,27 @@ static void pidLuxFloat(pidProfile_t *pidProfile, controlRateConfig_t *controlRa
         // Used in stand-alone mode for ACRO, controlled by higher level regulators in other modes
         // -----calculate scaled error.AngleRates
         // multiplication of rcCommand corresponds to changing the sticks scaling here
-        error = setpoint - feedback;
+        rateError = setpoint - feedback;
+
+        rateError = rateError + getHeadingError(axis);
 
         // -----calculate P component
-        PTerm = error * pidProfile->P_f[axis] * PIDweight[axis] / 100;
+        PTerm = rateError * pidProfile->P_f[axis] * PIDweight[axis] / 100;
 
         // -----calculate I component.
-        errorGyroIf[axis] = constrainf(errorGyroIf[axis] + (error + getHeadingError(axis)) * dT * pidProfile->I_f[axis] * 10 * Iweigth[axis] / 100, -250.0f, 250.0f);
-
+        float iferrornormal = (rateError) * dT * pidProfile->I_f[axis] * 10 * Iweigth[axis] / 100;
+        float iferror = (rateError + getHeadingError(axis)) * dT * pidProfile->I_f[axis] * 10 * Iweigth[axis] / 100;
+        debug[1] = iferrornormal*1000;
+        debug[2] = iferror*1000;
+        errorGyroIf[axis] = constrainf(errorGyroIf[axis] + iferrornormal, -250.0f, 250.0f);
+        debug[3] = errorGyroIf[FD_YAW];
         // limit maximum integrator value to prevent WindUp - accumulating extreme values when system is saturated.
         // I coefficient (I8) moved before integration to make limiting independent from PID settings
         ITerm = errorGyroIf[axis];
 
         //-----calculate D-term
-        delta = error - lastError[axis];
-        lastError[axis] = error;
+        delta = rateError - lastError[axis];
+        lastError[axis] = rateError;
 
         // Correct difference by cycle time. Cycle time is jittery (can be different 2 times), so calculated difference
         // would be scaled by different dt each time. Division by dT fixes that.
@@ -411,6 +428,7 @@ static void pidLuxFloat(pidProfile_t *pidProfile, controlRateConfig_t *controlRa
         axisPID_I[axis] = ITerm;
         axisPID_D[axis] = DTerm;
 #endif
+        debug[0] = getHeadingSetPoint(FD_YAW);
     }
 
 }
