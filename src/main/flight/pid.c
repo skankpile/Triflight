@@ -198,11 +198,43 @@ float getHeadingSetPoint(uint8_t axis)
     return headingSetpoint[axis];
 }
 
+float increaseHeadingSetPoint(flight_dynamics_index_t axis, float amount, float axisHeading)
+{
+    headingSetpoint[axis] -= amount;
+
+    if (headingSetpoint[axis] < 0.0f)
+    {
+        headingSetpoint[axis] += 360.0f;
+    }
+    else if (headingSetpoint[axis] > 360.0f)
+    {
+        headingSetpoint[axis] -= 360.0f;
+    }
+
+    float angleDiff = axisHeading - headingSetpoint[axis];
+
+    if (angleDiff >= 180.0f)
+    {
+        angleDiff -= 360.0f;
+    }
+    else if (angleDiff <= -180.0f)
+    {
+        angleDiff += 360.0f;
+    }
+
+    return angleDiff;
+}
+
 float getHeadingError(flight_dynamics_index_t axis, uint8_t rate)
 {
     float headingError;
     float direction = 1.0f;
     int16_t axisHeading;
+
+//    if (!IS_RC_MODE_ACTIVE(BOXTAILTUNE))
+//    {
+//        return 0.0f;
+//    }
 
     switch (axis)
     {
@@ -228,26 +260,15 @@ float getHeadingError(flight_dynamics_index_t axis, uint8_t rate)
     if ((ABS(attitude.values.roll) < 600) && (ABS(attitude.values.pitch) < 600))
     {
 //        headingSetpoint[axis] -= (float)(rcCommand[YAW] * rate) / 15.0f * dT;
-        headingSetpoint[axis] -= (float)(rcCommand[YAW] * (rate + 10)) / 50.0f * dT;
+        float yawStickDeflection = (float)ABS(rcCommand[YAW]) / 500.0f;
+        float angleDiff;
+        debug[1] = yawStickDeflection * 100;
+        angleDiff = increaseHeadingSetPoint(axis, (float)(rcCommand[YAW] * (rate + 10)) / 25.0f * dT, (float)axisHeading / 10.0f);
+        angleDiff = increaseHeadingSetPoint(axis, -0.1f * angleDiff * yawStickDeflection, (float)axisHeading / 10.0f);
 
-        if (headingSetpoint[axis] < 0.0f)
-        {
-            headingSetpoint[axis] += 360.0f;
-        }
-        else if (headingSetpoint[axis] > 360.0f)
-        {
-            headingSetpoint[axis] -= 360.0f;
-        }
-        float angleDiff = (float)axisHeading / 10.0f - headingSetpoint[axis];
-        if (angleDiff >= 180.0f)
-        {
-            angleDiff -= 360.0f;
-        }
-        else if (angleDiff <= -180.0f)
-        {
-            angleDiff += 360.0f;
-        }
         headingError = direction * angleDiff * 6.0f;
+
+        //float headingErrorGain = 1.0f - ((float)ABS(rcCommand[YAW]) / 500.0f);
         debug[3] = headingError;
 
     }
@@ -389,7 +410,6 @@ static void pidLuxFloat(pidProfile_t *pidProfile, controlRateConfig_t *controlRa
 
         // -----calculate I component.
         float iferrornormal = (rateError) * dT * pidProfile->I_f[axis] * 10 * Iweigth[axis] / 100;
-        debug[1] = iferrornormal*1000;
         errorGyroIf[axis] = constrainf(errorGyroIf[axis] + iferrornormal, -250.0f, 250.0f);
         // limit maximum integrator value to prevent WindUp - accumulating extreme values when system is saturated.
         // I coefficient (I8) moved before integration to make limiting independent from PID settings
