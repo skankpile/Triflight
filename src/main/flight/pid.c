@@ -82,6 +82,7 @@ static float errorAngleIf[2] = { 0.0f, 0.0f };
 
 static void pidRewrite(pidProfile_t *pidProfile, controlRateConfig_t *controlRateConfig,
         uint16_t max_angle_inclination, rollAndPitchTrims_t *angleTrim, rxConfig_t *rxConfig);
+static int16_t pidLuxFloatHeading(flight_dynamics_index_t axis, uint8_t rate, pidProfile_t *pidProfile);
 
 typedef void (*pidControllerFuncPtr)(pidProfile_t *pidProfile, controlRateConfig_t *controlRateConfig,
         uint16_t max_angle_inclination, rollAndPitchTrims_t *angleTrim, rxConfig_t *rxConfig);            // pid controller function prototype
@@ -111,6 +112,7 @@ void pidResetErrorGyro(void)
 const angle_index_t rcAliasToAngleIndexMap[] = { AI_ROLL, AI_PITCH };
 
 static filterStatePt1_t DTermState[3];
+static filterStatePt1_t DTermStateHeading[3];
 static float headingSetpoint[3];
 
 //float getYawSetpoint(uint8_t rate)
@@ -403,8 +405,6 @@ static void pidLuxFloat(pidProfile_t *pidProfile, controlRateConfig_t *controlRa
         // multiplication of rcCommand corresponds to changing the sticks scaling here
         rateError = setpoint - feedback;
 
-        rateError = rateError + getHeadingError(axis, rate);
-
         // -----calculate P component
         PTerm = rateError * pidProfile->P_f[axis] * PIDweight[axis] / 100;
 
@@ -431,7 +431,7 @@ static void pidLuxFloat(pidProfile_t *pidProfile, controlRateConfig_t *controlRa
         DTerm = constrainf(delta * pidProfile->D_f[axis] * PIDweight[axis] / 100, -300.0f, 300.0f);
 
         // -----calculate total PID output
-        axisPID[axis] = constrain(lrintf(PTerm + ITerm + DTerm), -1000, 1000);
+        axisPID[axis] = constrain(lrintf(PTerm + ITerm + DTerm + pidLuxFloatHeading(axis, rate, pidProfile)), -1000, 1000);
 
 #ifdef GTUNE
         if (FLIGHT_MODE(GTUNE_MODE) && ARMING_FLAG(ARMED)) {
@@ -440,14 +440,76 @@ static void pidLuxFloat(pidProfile_t *pidProfile, controlRateConfig_t *controlRa
 #endif
 
 #ifdef BLACKBOX
-        axisPID_P[axis] = PTerm;
-        axisPID_I[axis] = ITerm;
-        axisPID_D[axis] = DTerm;
+        if (axis != FD_PITCH)
+        {
+            axisPID_P[axis] = PTerm;
+            axisPID_I[axis] = ITerm;
+            axisPID_D[axis] = DTerm;
+        }
 #endif
-        debug[0] = getHeadingSetPoint(FD_YAW);
+    }
+}
+
+static int16_t pidLuxFloatHeading(flight_dynamics_index_t axis, uint8_t rate, pidProfile_t *pidProfile)
+{
+    float headingError;
+    float ITerm,PTerm,DTerm;
+    static float lastError[3];
+    static const float P_f[3] = {
+            [FD_ROLL]  = 0.0f,
+            [FD_PITCH] = 0.0f,
+            [FD_YAW]   = 2.0f};
+    static const float I_f[3] = {
+            [FD_ROLL]  = 0.0f,
+            [FD_PITCH] = 0.0f,
+            [FD_YAW]   = 0.04f};
+    static const float D_f[3] = {
+            [FD_ROLL]  = 0.0f,
+            [FD_PITCH] = 0.0f,
+            [FD_YAW]   = 0.30f};
+    float delta;
+
+    if (axis != FD_YAW)
+    {
+        return 0;
     }
 
+    headingError = getHeadingError(axis, rate);
+
+    // -----calculate P component
+    PTerm = headingError * P_f[axis] * PIDweight[axis] / 100;
+
+    // -----calculate I component.
+    float iferrornormal = (headingError) * dT * I_f[axis] * 10 * Iweigth[axis] / 100;
+    errorGyroIf[axis] = constrainf(errorGyroIf[axis] + iferrornormal, -250.0f, 250.0f);
+    // limit maximum integrator value to prevent WindUp - accumulating extreme values when system is saturated.
+    // I coefficient (I8) moved before integration to make limiting independent from PID settings
+    ITerm = errorGyroIf[axis];
+
+    //-----calculate D-term
+    delta = headingError - lastError[axis];
+    lastError[axis] = headingError;
+
+    // Correct difference by cycle time. Cycle time is jittery (can be different 2 times), so calculated difference
+    // would be scaled by different dt each time. Division by dT fixes that.
+    delta *= (1.0f / dT);
+
+    // Dterm low pass
+    if (pidProfile->dterm_cut_hz) {
+        delta = filterApplyPt1(delta, &DTermStateHeading[axis], pidProfile->dterm_cut_hz, dT);
+    }
+    DTerm = constrainf(delta * D_f[axis] * PIDweight[axis] / 100, -300.0f, 300.0f);
+
+#ifdef BLACKBOX
+    axisPID_P[FD_PITCH] = PTerm;
+    axisPID_I[FD_PITCH] = ITerm;
+    axisPID_D[FD_PITCH] = DTerm;
+#endif
+    debug[0] = getHeadingSetPoint(FD_YAW);
+    // -----calculate total PID output
+    return constrain(lrintf(PTerm + ITerm + DTerm), -1000, 1000);
 }
+
 
 static void pidRewrite(pidProfile_t *pidProfile, controlRateConfig_t *controlRateConfig, uint16_t max_angle_inclination,
         rollAndPitchTrims_t *angleTrim, rxConfig_t *rxConfig)
