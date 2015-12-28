@@ -48,7 +48,7 @@
 #include "config/runtime_config.h"
 
 //! Integrator is disabled when rate error exceeds this limit
-#define LUXFLOAT_INTEGRATOR_DISABLE_LIMIT_DPS (30.0f)
+#define LUXFLOAT_INTEGRATOR_DISABLE_LIMIT_DPS (40.0f)
 
 extern uint16_t cycleTime;
 extern uint8_t motorCount;
