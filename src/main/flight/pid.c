@@ -52,7 +52,7 @@
 #include "config/config_unittest.h"
 
 //! Integrator is disabled when rate error exceeds this limit
-#define LUXFLOAT_INTEGRATOR_DISABLE_LIMIT_DPS (30.0f)
+#define LUXFLOAT_INTEGRATOR_DISABLE_LIMIT_DPS (40.0f)
 
 extern uint8_t motorCount;
 extern float dT;
