@@ -87,8 +87,7 @@
 
 #define SERVO_CALIB_NUM_OF_MEAS  (5)
 
-#define TT_CALIB_I_TARGET       (5)
-#define TT_CALIB_I_LOW_LIMIT    (5)
+#define TT_CALIB_I_TARGET       (8)
 #define TT_CALIB_I_LARGE_INCREMENT_LIMIT (10)
 
 #define IsDelayElapsed_us(timestamp_us, delay_us) ((uint32_t)(micros() - timestamp_us) >= delay_us)
@@ -106,6 +105,7 @@ typedef struct thrTrqCalibration_s {
     uint32_t timestamp_ms;
     uint32_t lastAdjTime_ms;
     thrTrqCalibState_e state;
+    uint16_t target;
 } thrTrqCalibration_t;
 
 #endif
@@ -115,12 +115,12 @@ extern float dT;
 extern master_t masterConfig;
 
 static thrTrqCalibration_t thrTrqCalib = {.state = TTC_IDLE};
-static int16_t tailServoMaxYawForce = 0;
-static float tailServoThrustFactor = 0;
+static int32_t tailServoMaxYawForce = 0;
+ float tailServoThrustFactor = 0;
 static int16_t tailServoMaxAngle = 0;
 static int16_t tailServoSpeed = 0;
 static float virtualServoAngle = TRI_TAIL_SERVO_ANGLE_MID / 10.0f;
-static int16_t yawForceCurve[TRI_YAW_FORCE_CURVE_SIZE];
+static int32_t yawForceCurve[TRI_YAW_FORCE_CURVE_SIZE];
 static int16_t tailMotorPitchZeroAngle;
 static int16_t tailMotorAccelerationDelay_ms = 30;
 static int16_t tailMotorDecelerationDelay_ms = 100;
@@ -134,7 +134,7 @@ static mixerConfig_t *gpMixerConfig;
 static void initCurves();
 static uint16_t getServoValueAtAngle(servoParam_t * servoConf, uint16_t angle);
 static float getPitchCorrectionAtTailAngle(float angle);
-static uint16_t getAngleFromYawCurveAtForce(int16_t force);
+static uint16_t getAngleFromYawCurveAtForce(int32_t force);
 static uint16_t getServoAngle(servoParam_t * servoConf, uint16_t servoValue);
 static uint16_t getPitchCorrectionMaxPhaseShift(int16_t servoAngle,
         int16_t servoSetpointAngle,
@@ -172,8 +172,8 @@ static void initCurves()
 
     const int16_t minAngle = TRI_TAIL_SERVO_ANGLE_MID - tailServoMaxAngle;
     const int16_t maxAngle = TRI_TAIL_SERVO_ANGLE_MID + tailServoMaxAngle;
-    int16_t maxNegForce = 0;
-    int16_t maxPosForce = 0;
+    int32_t maxNegForce = 0;
+    int32_t maxPosForce = 0;
 
     int16_t angle = TRI_TAIL_SERVO_ANGLE_MID - TRI_TAIL_SERVO_MAX_ANGLE;
     for (int32_t i = 0; i < TRI_YAW_FORCE_CURVE_SIZE; i++)
@@ -202,7 +202,7 @@ static uint16_t getLinearServoValue(servoParam_t *servoConf, uint16_t servoValue
     const int16_t servoMid = servoConf->middle;
     // First find the yaw force at given servo value from a linear curve
     const int16_t servoRange = (servoValue < servoMid) ? servoMid - servoConf->min : servoConf->max - servoMid;
-    const int16_t linearYawForceAtValue = (int32_t)(tailServoMaxYawForce) * (servoValue - servoMid) / servoRange;
+    const int32_t linearYawForceAtValue = (int32_t)(tailServoMaxYawForce) * (servoValue - servoMid) / servoRange;
     const int16_t correctedAngle = getAngleFromYawCurveAtForce(linearYawForceAtValue);
     return getServoValueAtAngle(servoConf, correctedAngle);
 }
@@ -272,7 +272,7 @@ static float getPitchCorrectionAtTailAngle(float angle)
     return 1 / (sin_approx(angle) - cos_approx(angle) / tailServoThrustFactor);
 }
 
-static uint16_t getAngleFromYawCurveAtForce(int16_t force)
+static uint16_t getAngleFromYawCurveAtForce(int32_t force)
 {
     if (force < yawForceCurve[0]) // No force that low
     {
@@ -377,6 +377,7 @@ static void triThrustTorqueCalibrationStep()
             thrTrqCalib.state = TTC_ACTIVE;
             thrTrqCalib.timestamp_ms = millis();
             thrTrqCalib.lastAdjTime_ms = millis();
+            thrTrqCalib.target = TT_CALIB_I_TARGET;
         }
         break;
     case TTC_ACTIVE:
@@ -388,11 +389,11 @@ static void triThrustTorqueCalibrationStep()
             if (IsDelayElapsed_ms(thrTrqCalib.timestamp_ms, 500))
             {
                 // RC commands have been within deadbands for 500ms
-                if (IsDelayElapsed_ms(thrTrqCalib.lastAdjTime_ms, 1000))
+                if (IsDelayElapsed_ms(thrTrqCalib.lastAdjTime_ms, 500))
                 {
                     thrTrqCalib.lastAdjTime_ms = millis();
                     int32_t abs_I = ABS(axisPID_I[YAW]);
-                    if (abs_I < TT_CALIB_I_TARGET)
+                    if (abs_I < thrTrqCalib.target)
                     {
                         // I is within limits
                         thrTrqCalib.state = TTC_CHECK_WITHIN_LIMITS;
@@ -409,7 +410,7 @@ static void triThrustTorqueCalibrationStep()
                         // If I term is greater than the limit, use greater increment for faster result
                         if (abs_I > TT_CALIB_I_LARGE_INCREMENT_LIMIT)
                         {
-                            increment += 0.1f * ((float)abs_I / TT_CALIB_I_LARGE_INCREMENT_LIMIT);
+                            increment += 0.15f * ((float)abs_I / TT_CALIB_I_LARGE_INCREMENT_LIMIT);
                         }
 
                         if (axisPID_I[YAW] > 0)
@@ -423,16 +424,20 @@ static void triThrustTorqueCalibrationStep()
                         }
 
                         beeperConfirmationBeeps(beeps);
-                        tailServoThrustFactor += increment;
-                        initCurves();
-                        thrTrqCalib.lastAdjTime_ms = millis();
-                    }
 
-                    if ((tailServoThrustFactor < TAIL_THRUST_FACTOR_MIN_FLOAT) || (tailServoThrustFactor > TAIL_THRUST_FACTOR_MAX_FLOAT))
-                    {
-                        beeper(BEEPER_ACC_CALIBRATION_FAIL);
-                        thrTrqCalib.state = TTC_FAIL;
-                        thrTrqCalib.timestamp_ms = millis();
+                        float newThrustFactor = tailServoThrustFactor + increment;
+                        if ((newThrustFactor < TAIL_THRUST_FACTOR_MIN_FLOAT) || (newThrustFactor > TAIL_THRUST_FACTOR_MAX_FLOAT))
+                        {
+                            beeper(BEEPER_ACC_CALIBRATION_FAIL);
+                            thrTrqCalib.state = TTC_FAIL;
+                            thrTrqCalib.timestamp_ms = millis();
+                        }
+                        else
+                        {
+                            tailServoThrustFactor = newThrustFactor;
+                            initCurves();
+                            thrTrqCalib.lastAdjTime_ms = millis();
+                        }
                     }
                 }
             }
@@ -444,9 +449,9 @@ static void triThrustTorqueCalibrationStep()
         break;
     case TTC_CHECK_WITHIN_LIMITS:
         if ((throttleStatus == THROTTLE_HIGH) &&
-            (ABS(axisPID_I[YAW]) < TT_CALIB_I_TARGET))
+            (ABS(axisPID_I[YAW]) < thrTrqCalib.target))
         {
-            if (IsDelayElapsed_ms(thrTrqCalib.timestamp_ms, 2500))
+            if (IsDelayElapsed_ms(thrTrqCalib.timestamp_ms, 1000))
             {
                 beeper(BEEPER_READY_BEEP);
                 thrTrqCalib.state = TTC_DONE;
@@ -459,6 +464,10 @@ static void triThrustTorqueCalibrationStep()
             thrTrqCalib.state = TTC_ACTIVE;
             thrTrqCalib.timestamp_ms = millis();
             thrTrqCalib.lastAdjTime_ms = millis();
+            if (IsDelayElapsed_ms(thrTrqCalib.lastAdjTime_ms, 200))
+            {
+                thrTrqCalib.target++;
+            }
         }
         break;
     case TTC_DONE:
