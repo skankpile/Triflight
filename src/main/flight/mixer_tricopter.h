@@ -24,6 +24,12 @@
 #define TAIL_THRUST_FACTOR_MIN_FLOAT  (TAIL_THRUST_FACTOR_MIN / 10.0f)
 #define TAIL_THRUST_FACTOR_MAX_FLOAT  (TAIL_THRUST_FACTOR_MAX / 10.0f)
 
+/** @brief Servo types. */
+typedef enum {
+    TRI_SERVO_VIRTUAL = 0,  ///< Virtual servo, no physical feedback signal from servo
+    TRI_SERVO_FEEDBACK,     ///< Feedback signal from servo
+} triServoType_e;
+
 /** @brief Initialize tricopter specific mixer functionality.
  *
  *  @param pTailServoConfig Pointer to tail servo configuration
@@ -36,11 +42,17 @@ void triInitMixer(servoParam_t *pTailServoConfig,
         int16_t *pTailServo,
         mixerConfig_t *pMixerConfig);
 
-/** @brief Get estimated tail servo angle (position).
+/** @brief Get current tail servo angle from the active feedback sensor.
  *
- *  @return Void.
+ *  @return Servo angle.
  */
-float triGetVirtualServoAngle();
+float triGetCurrentActiveServoAngle(void);
+
+/** @brief Get current tail servo angle based on feedback type (virtual or feedback).
+ *
+ *  @return Servo angle.
+ */
+float triGetCurrentServoAngle(triServoType_e servoType);
 
 /** @brief Perform tricopter mixer actions.
  *
@@ -58,5 +70,11 @@ void triServoMixer();
  *  motor output.
  */
 int16_t triGetMotorCorrection(uint8_t motorIndex);
+
+/** @brief Should tail servo be active when unarmed.
+ *
+ *  @return true is should, otherwise false.
+ */
+_Bool triEnableServoUnarmed(void);
 
 #endif /* SRC_MAIN_FLIGHT_MIXER_TRICOPTER_H_ */

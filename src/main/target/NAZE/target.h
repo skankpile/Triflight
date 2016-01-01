@@ -166,8 +166,8 @@
 #define RSSI_ADC_CHANNEL            ADC_Channel_1
 
 #define EXTERNAL1_ADC_GPIO          GPIOA
-#define EXTERNAL1_ADC_GPIO_PIN      GPIO_Pin_5
-#define EXTERNAL1_ADC_CHANNEL       ADC_Channel_5
+#define EXTERNAL1_ADC_GPIO_PIN      GPIO_Pin_7
+#define EXTERNAL1_ADC_CHANNEL       ADC_Channel_7
 
 
 #define LED_STRIP
