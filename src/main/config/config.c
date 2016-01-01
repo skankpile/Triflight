@@ -423,7 +423,7 @@ STATIC_UNIT_TESTED void resetConf(void)
 #else
     masterConfig.motor_pwm_rate = BRUSHLESS_MOTORS_PWM_RATE;
 #endif
-    masterConfig.servo_pwm_rate = 50;
+    masterConfig.servo_pwm_rate = 250;
 
 #ifdef GPS
     // gps/nav stuff
