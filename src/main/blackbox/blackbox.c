@@ -66,6 +66,7 @@
 #include "telemetry/telemetry.h"
 
 #include "flight/mixer.h"
+#include "flight/mixer_tricopter.h"
 #include "flight/altitudehold.h"
 #include "flight/failsafe.h"
 #include "flight/imu.h"
@@ -78,6 +79,7 @@
 
 #include "blackbox.h"
 #include "blackbox_io.h"
+
 
 #define BLACKBOX_I_INTERVAL 32
 #define BLACKBOX_SHUTDOWN_TIMEOUT_MILLIS 200
@@ -366,7 +368,6 @@ static bool blackboxModeActivationConditionPresent = false;
 static bool blackboxIsOnlyLoggingIntraframes() {
     return masterConfig.blackbox_rate_num == 1 && masterConfig.blackbox_rate_denom == 32;
 }
-extern float triGetVirtualServoAngle();
 
 static bool testBlackboxConditionUncached(FlightLogFieldCondition condition)
 {
@@ -930,8 +931,8 @@ static void loadMainState(void)
         blackboxCurrent->accSmooth[i] = accSmooth[i];
     }
 
-    blackboxCurrent->attitude[0] = attitude.values.roll;
-    blackboxCurrent->attitude[1] = attitude.values.pitch;
+    blackboxCurrent->attitude[0] = triGetCurrentServoAngle(TRI_SERVO_FEEDBACK) * 10.0f;
+    blackboxCurrent->attitude[1] = triGetCurrentServoAngle(TRI_SERVO_VIRTUAL) * 10.0f;
     blackboxCurrent->attitude[2] = attitude.values.yaw;
 
     for (i = 0; i < motorCount; i++) {
@@ -960,7 +961,7 @@ static void loadMainState(void)
 
 #ifdef USE_SERVOS
     //Tail servo for tricopters
-    blackboxCurrent->servo[5] = triGetVirtualServoAngle() * 10.0f;
+    blackboxCurrent->servo[5] = triGetCurrentActiveServoAngle() * 10.0f;
 #endif
 }
 
