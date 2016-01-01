@@ -17,6 +17,7 @@
 
 #include <stdbool.h>
 #include <math.h>
+#include <float.h>
 #include "platform.h"
 #include "debug.h"
 
@@ -25,6 +26,7 @@
 #include "common/color.h"
 #include "common/encoding.h"
 #include "common/utils.h"
+#include "common/filter.h"
 
 #include "drivers/gpio.h"
 #include "drivers/sensor.h"
@@ -35,6 +37,7 @@
 #include "drivers/pwm_rx.h"
 #include "drivers/accgyro.h"
 #include "drivers/light_led.h"
+#include "drivers/adc.h"
 
 #include "sensors/sensors.h"
 #include "sensors/boardalignment.h"
@@ -76,7 +79,6 @@
 
 #include "mw.h"
 
-
 #ifdef USE_SERVOS
 #define TRI_TAIL_SERVO_ANGLE_MID (900)
 #define TRI_YAW_FORCE_CURVE_SIZE (100)
@@ -91,19 +93,72 @@
 #define IsDelayElapsed_ms(timestamp_ms, delay_ms) ((uint32_t)(millis() - timestamp_ms) >= delay_ms)
 
 typedef enum {
-    TTC_IDLE = 0,
-    TTC_ACTIVE,
-    TTC_CHECK_WITHIN_LIMITS,
-    TTC_DONE,
-    TTC_FAIL,
-} thrTrqCalibState_e;
+    TT_IDLE = 0,
+    TT_WAIT,
+    TT_ACTIVE,
+    TT_WAIT_FOR_DISARM,
+    TT_DONE,
+    TT_FAIL,
+} tailTuneState_e;
 
-typedef struct thrTrqCalibration_s {
-    uint32_t timestamp_ms;
-    uint32_t lastAdjTime_ms;
-    thrTrqCalibState_e state;
-    uint16_t target;
-} thrTrqCalibration_t;
+typedef enum {
+    SS_IDLE = 0,
+    SS_SETUP,
+    SS_CALIB,
+} servoSetupState_e;
+
+typedef enum {
+    SS_C_IDLE = 0,
+    SS_C_CALIB_MIN_MID_MAX,
+    SS_C_CALIB_SPEED,
+} servoSetupCalibState_e;
+
+typedef enum {
+    SS_C_MIN = 0,
+    SS_C_MID,
+    SS_C_MAX,
+} servoSetupCalibSubState_e;
+
+typedef enum {
+    TT_MODE_NONE = 0,
+    TT_MODE_THRUST_TORQUE,
+    TT_MODE_SERVO_SETUP,
+} tailtuneMode_e;
+
+typedef struct tailTune_s {
+    tailtuneMode_e mode;
+    struct thrustTorque_t
+    {
+        tailTuneState_e state;
+        uint32_t timestamp_ms;
+        uint32_t lastAdjTime_ms;
+        struct servoAvgAngle_t
+        {
+            float sum;
+            uint16_t numOf;
+        } servoAvgAngle;
+    }tt;
+    struct servoSetup_t
+    {
+        servoSetupState_e state;
+        float servoVal;
+        int16_t *pLimitToAdjust;
+        struct servoCalib_t
+        {
+            _Bool done;
+            _Bool waitingServoToStop;
+            servoSetupCalibState_e state;
+            servoSetupCalibSubState_e subState;
+            uint32_t timestamp_ms;
+            struct average_t
+            {
+                uint16_t *pCalibConfig;
+                uint32_t sum;
+                uint16_t numOf;
+            } avg;
+        }cal;
+    }ss;
+} tailTune_t;
 
 #endif
 
@@ -111,12 +166,17 @@ typedef struct thrTrqCalibration_s {
 extern float dT;
 extern master_t masterConfig;
 
-static thrTrqCalibration_t thrTrqCalib = {.state = TTC_IDLE};
+static tailTune_t tailTune = {.mode = TT_MODE_NONE};
 static int32_t tailServoMaxYawForce = 0;
  float tailServoThrustFactor = 0;
 static int16_t tailServoMaxAngle = 0;
 static int16_t tailServoSpeed = 0;
-static float virtualServoAngle = TRI_TAIL_SERVO_ANGLE_MID / 10.0f;
+
+struct triServoAngle_t
+{
+    float virtual;
+    float feedback;
+} tailServoAngle = {.virtual = TRI_TAIL_SERVO_ANGLE_MID / 10.0f, .feedback = TRI_TAIL_SERVO_ANGLE_MID / 10.0f};
 static int32_t yawForceCurve[TRI_YAW_FORCE_CURVE_SIZE];
 static int16_t tailMotorPitchZeroAngle;
 static int16_t tailMotorAccelerationDelay_ms = 30;
@@ -128,9 +188,11 @@ static servoParam_t * gpTailServoConf;
 static int16_t *gpTailServo;
 static mixerConfig_t *gpMixerConfig;
 
+static uint16_t tailServoADC = 0;
+
 static void initCurves();
 static uint16_t getServoValueAtAngle(servoParam_t * servoConf, uint16_t angle);
-static float getPitchCorrectionAtTailAngle(float angle);
+static float getPitchCorrectionAtTailAngle(float angle, float thrustFactor);
 static uint16_t getAngleFromYawCurveAtForce(int32_t force);
 static uint16_t getServoAngle(servoParam_t * servoConf, uint16_t servoValue);
 static uint16_t getPitchCorrectionMaxPhaseShift(int16_t servoAngle,
@@ -140,8 +202,10 @@ static uint16_t getPitchCorrectionMaxPhaseShift(int16_t servoAngle,
         int16_t motorDirectionChangeAngle);
 static uint16_t getLinearServoValue(servoParam_t *servoConf, uint16_t servoValue);
 static void virtualServoStep(float dT, servoParam_t *servoConf, uint16_t servoValue);
-static void triThrustTorqueCalibrationStep();
-
+static void tailTuneModeThrustTorque(struct thrustTorque_t *pTT, throttleStatus_e throttleStatus);
+static void tailTuneModeServoSetup(struct servoSetup_t *pSS, servoParam_t *pServoConf, int16_t *pServoVal);
+static void triTailTuneStep(servoParam_t *pServoConf, int16_t *pServoVal);
+static void updateServoAngles(void);
 #endif
 
 void triInitMixer(servoParam_t *pTailServoConfig,
@@ -176,7 +240,7 @@ static void initCurves()
     for (int32_t i = 0; i < TRI_YAW_FORCE_CURVE_SIZE; i++)
     {
         const float angleRad = DEGREES_TO_RADIANS(angle / 10.0f);
-        yawForceCurve[i] = 1000.0f * (-tailServoThrustFactor * cosf(angleRad) - sinf(angleRad)) * getPitchCorrectionAtTailAngle(angleRad);
+        yawForceCurve[i] = 1000.0f * (-tailServoThrustFactor * cosf(angleRad) - sinf(angleRad)) * getPitchCorrectionAtTailAngle(angleRad, tailServoThrustFactor);
         // Only calculate the top forces in the configured angle range
         if ((angle >= minAngle) && (angle <= maxAngle))
         {
@@ -189,9 +253,28 @@ static void initCurves()
     tailServoMaxYawForce = MIN(ABS(maxNegForce), ABS(maxPosForce));
 }
 
-float triGetVirtualServoAngle()
+float triGetCurrentActiveServoAngle(void)
 {
-    return virtualServoAngle;
+    if (gpMixerConfig->tri_servo_feedback_mode == TRI_SERVO_FEEDBACK)
+    {
+        return triGetCurrentServoAngle(TRI_SERVO_FEEDBACK);
+    }
+    else
+    {
+        return triGetCurrentServoAngle(TRI_SERVO_VIRTUAL);
+    }
+}
+
+float triGetCurrentServoAngle(triServoType_e servoType)
+{
+    if (servoType == TRI_SERVO_VIRTUAL)
+    {
+        return tailServoAngle.virtual;
+    }
+    else
+    {
+        return tailServoAngle.feedback;
+    }
 }
 
 static uint16_t getLinearServoValue(servoParam_t *servoConf, uint16_t servoValue)
@@ -204,15 +287,20 @@ static uint16_t getLinearServoValue(servoParam_t *servoConf, uint16_t servoValue
     return getServoValueAtAngle(servoConf, correctedAngle);
 }
 
+
 void triServoMixer()
 {
+    static filterStatePt1_t feedbackFilter;
+    tailServoADC = filterApplyPt1(adcGetChannel(ADC_EXTERNAL1), &feedbackFilter, 70, dT);
+
     if (ARMING_FLAG(ARMED))
     {
         *gpTailServo = getLinearServoValue(gpTailServoConf, *gpTailServo);
-        triThrustTorqueCalibrationStep();
     }
 
-    virtualServoStep(dT, gpTailServoConf, *gpTailServo);
+    triTailTuneStep(gpTailServoConf, gpTailServo);
+
+    updateServoAngles();
 }
 
 int16_t triGetMotorCorrection(uint8_t motorIndex)
@@ -223,7 +311,7 @@ int16_t triGetMotorCorrection(uint8_t motorIndex)
         // Adjust tail motor speed based on servo angle. Check how much to adjust speed from pitch force curve based on servo angle.
         // Take motor speed up lag into account by shifting the phase of the curve
         // Not taking into account the motor braking lag (yet)
-        const int16_t servoAngle = triGetVirtualServoAngle() * 10.0f;
+        const int16_t servoAngle = triGetCurrentActiveServoAngle() * 10.0f;
         const int16_t servoSetpointAngle = getServoAngle(gpTailServoConf, *gpTailServo);
 
         const uint16_t maxPhaseShift = getPitchCorrectionMaxPhaseShift(servoAngle, servoSetpointAngle, tailMotorAccelerationDelay_angle, tailMotorDecelerationDelay_angle, tailMotorPitchZeroAngle);
@@ -236,10 +324,15 @@ int16_t triGetMotorCorrection(uint8_t motorIndex)
 
         const int16_t futureServoAngle = constrain(servoAngle + angleDiff, TRI_TAIL_SERVO_ANGLE_MID - tailServoMaxAngle, TRI_TAIL_SERVO_ANGLE_MID + tailServoMaxAngle);
         const uint16_t throttleMotorOutput = rcCommand[THROTTLE] - getCurrentMinthrottle();
-        correction = (throttleMotorOutput * getPitchCorrectionAtTailAngle(DEGREES_TO_RADIANS(futureServoAngle / 10.0f))) - throttleMotorOutput;
+        correction = (throttleMotorOutput * getPitchCorrectionAtTailAngle(DEGREES_TO_RADIANS(futureServoAngle / 10.0f), tailServoThrustFactor)) - throttleMotorOutput;
     }
 
     return correction;
+}
+
+_Bool triEnableServoUnarmed(void)
+{
+    return ((gpMixerConfig->tri_unarmed_servo != 0) || FLIGHT_MODE(TAILTUNE_MODE));
 }
 
 static uint16_t getServoValueAtAngle(servoParam_t *servoConf, uint16_t angle)
@@ -264,9 +357,9 @@ static uint16_t getServoValueAtAngle(servoParam_t *servoConf, uint16_t angle)
     return servoValue;
 }
 
-static float getPitchCorrectionAtTailAngle(float angle)
+static float getPitchCorrectionAtTailAngle(float angle, float thrustFactor)
 {
-    return 1 / (sin_approx(angle) - cos_approx(angle) / tailServoThrustFactor);
+    return 1 / (sin_approx(angle) - cos_approx(angle) / thrustFactor);
 }
 
 static uint16_t getAngleFromYawCurveAtForce(int32_t force)
@@ -335,146 +428,403 @@ static void virtualServoStep(float dT, servoParam_t *servoConf, uint16_t servoVa
 {
     const float angleSetPoint = getServoAngle(servoConf, servoValue) / 10.0f;
     const float dA = dT * tailServoSpeed; // Max change of an angle since last check
-    if ( fabsf(virtualServoAngle - angleSetPoint) < dA )
+    if ( fabsf(tailServoAngle.virtual - angleSetPoint) < dA )
     {
         // At set-point after this moment
-        virtualServoAngle = angleSetPoint;
+        tailServoAngle.virtual = angleSetPoint;
     }
-    else if (virtualServoAngle < angleSetPoint)
+    else if (tailServoAngle.virtual < angleSetPoint)
     {
-        virtualServoAngle += dA;
+        tailServoAngle.virtual += dA;
     }
-    else // virtualServoAngle > angleSetPoint
+    else // tailServoAngle.virtual > angleSetPoint
     {
-        virtualServoAngle -= dA;
+        tailServoAngle.virtual -= dA;
     }
 }
 
-static void triThrustTorqueCalibrationStep()
+static void triTailTuneStep(servoParam_t *pServoConf, int16_t *pServoVal)
 {
+    throttleStatus_e throttleStatus;
     if (!IS_RC_MODE_ACTIVE(BOXTAILTUNE))
     {
         if (FLIGHT_MODE(TAILTUNE_MODE))
         {
+            DISABLE_ARMING_FLAG(PREVENT_ARMING);
             DISABLE_FLIGHT_MODE(TAILTUNE_MODE);
-            thrTrqCalib.state = TTC_IDLE;
+            tailTune.mode = TT_MODE_NONE;
         }
         return;
     }
-
-    const bool isThrottleHigh = (THROTTLE_HIGH == calculateThrottleStatus(&masterConfig.rxConfig, masterConfig.flight3DConfig.deadband3d_throttle));
-
-    switch(thrTrqCalib.state)
+    else
     {
-    case TTC_IDLE:
-        // Calibration has been requested, only start when throttle is up
-        if (isThrottleHigh)
+        throttleStatus = calculateThrottleStatus(&masterConfig.rxConfig, masterConfig.flight3DConfig.deadband3d_throttle);
+        ENABLE_FLIGHT_MODE(TAILTUNE_MODE);
+    }
+
+    if (tailTune.mode == TT_MODE_NONE)
+    {
+        if (ARMING_FLAG(ARMED))
         {
-            ENABLE_FLIGHT_MODE(TAILTUNE_MODE);
+            tailTune.mode = TT_MODE_THRUST_TORQUE;
+            tailTune.tt.state = TT_IDLE;
+        }
+        else
+        {
+            // Prevent accidental arming in servo setup mode
+            ENABLE_ARMING_FLAG(PREVENT_ARMING);
+            tailTune.mode = TT_MODE_SERVO_SETUP;
+            tailTune.ss.servoVal = pServoConf->middle;
+        }
+    }
+
+    switch (tailTune.mode)
+    {
+    case TT_MODE_THRUST_TORQUE:
+        tailTuneModeThrustTorque(&tailTune.tt, throttleStatus);
+        break;
+    case TT_MODE_SERVO_SETUP:
+        tailTuneModeServoSetup(&tailTune.ss, pServoConf, pServoVal);
+        break;
+    case TT_MODE_NONE:
+        break;
+    }
+}
+
+static void tailTuneModeThrustTorque(struct thrustTorque_t *pTT, throttleStatus_e throttleStatus)
+{
+    switch(pTT->state)
+    {
+    case TT_IDLE:
+        // Calibration has been requested, only start when throttle is up
+        if ((throttleStatus == THROTTLE_HIGH) && ARMING_FLAG(ARMED))
+        {
             beeper(BEEPER_READY_BEEP);
-            thrTrqCalib.state = TTC_ACTIVE;
-            thrTrqCalib.timestamp_ms = millis();
-            thrTrqCalib.lastAdjTime_ms = millis();
-            thrTrqCalib.target = TT_CALIB_I_TARGET;
+            pTT->timestamp_ms = millis();
+            pTT->lastAdjTime_ms = millis();
+            pTT->state = TT_WAIT;
+            pTT->servoAvgAngle.sum = 0;
+            pTT->servoAvgAngle.numOf = 0;
         }
         break;
-    case TTC_ACTIVE:
-        if (isThrottleHigh &&
+    case TT_WAIT:
+        if ((throttleStatus == THROTTLE_HIGH) && ARMING_FLAG(ARMED))
+        {
+            /* Wait for 5 seconds before activating the tuning.
+            This is so that pilot has time to take off if the tail tune mode was activated on ground. */
+            if (IsDelayElapsed_ms(pTT->timestamp_ms, 5000))
+            {
+                pTT->state = TT_ACTIVE;
+                pTT->timestamp_ms = millis();
+            }
+        }
+        else
+        {
+            pTT->timestamp_ms = millis();
+        }
+        break;
+    case TT_ACTIVE:
+        if ((throttleStatus == THROTTLE_HIGH) &&
             isRcAxisWithinDeadband(ROLL) &&
             isRcAxisWithinDeadband(PITCH) &&
-            isRcAxisWithinDeadband(YAW))
+            isRcAxisWithinDeadband(YAW) &&
+            (fabsf(gyroADC[FD_YAW] * gyro.scale) <= 4.0f))
         {
-            if (IsDelayElapsed_ms(thrTrqCalib.timestamp_ms, 500))
+            if (IsDelayElapsed_ms(pTT->timestamp_ms, 250))
             {
                 // RC commands have been within deadbands for 500ms
-                if (IsDelayElapsed_ms(thrTrqCalib.lastAdjTime_ms, 500))
+                if (IsDelayElapsed_ms(pTT->lastAdjTime_ms, 10))
                 {
-                    const int32_t abs_I = ABS(axisPID_I[YAW]);
-                    if (abs_I < thrTrqCalib.target)
+                    pTT->lastAdjTime_ms = millis();
+
+                    pTT->servoAvgAngle.sum += triGetCurrentActiveServoAngle();
+                    pTT->servoAvgAngle.numOf++;
+
+                    beeperConfirmationBeeps(1);
+
+                    if (pTT->servoAvgAngle.numOf >= 300)
                     {
-                        // I is within limits
-                        thrTrqCalib.state = TTC_CHECK_WITHIN_LIMITS;
-                        thrTrqCalib.timestamp_ms = millis();
+                        beeper(BEEPER_READY_BEEP);
+                        pTT->state = TT_WAIT_FOR_DISARM;
+                        pTT->timestamp_ms = millis();
                     }
-                    else
-                    {
-                        // Base increment is 0.1f which is the resolution of the CLI parameter
-                        float increment = 0.1f;
-
-                        // If I term is greater than the limit, use greater increment for faster result
-                        if (abs_I > TT_CALIB_I_LARGE_INCREMENT_LIMIT)
-                        {
-                            increment += 0.15f * ((float)abs_I / TT_CALIB_I_LARGE_INCREMENT_LIMIT);
-                        }
-
-                        uint8_t beeps = 2;
-                        if (axisPID_I[YAW] > 0)
-                        {
-                            increment *= -1.0f;
-                            beeps = 1;
-                        }
-                        beeperConfirmationBeeps(beeps);
-
-                        float newThrustFactor = tailServoThrustFactor + increment;
-                        if ((newThrustFactor < TAIL_THRUST_FACTOR_MIN_FLOAT) || (newThrustFactor > TAIL_THRUST_FACTOR_MAX_FLOAT))
-                        {
-                            beeper(BEEPER_ACC_CALIBRATION_FAIL);
-                            thrTrqCalib.state = TTC_FAIL;
-                            thrTrqCalib.timestamp_ms = millis();
-                        }
-                        else
-                        {
-                            tailServoThrustFactor = newThrustFactor;
-                            initCurves();
-                        }
-                    }
-                    thrTrqCalib.lastAdjTime_ms = millis();
                 }
             }
         }
         else
         {
-            thrTrqCalib.timestamp_ms = millis();
+            pTT->timestamp_ms = millis();
         }
         break;
-    case TTC_CHECK_WITHIN_LIMITS:
-        if (isThrottleHigh &&
-            (ABS(axisPID_I[YAW]) < thrTrqCalib.target))
+    case TT_WAIT_FOR_DISARM:
+        if (!ARMING_FLAG(ARMED))
         {
-            if (IsDelayElapsed_ms(thrTrqCalib.timestamp_ms, 1000))
+            float averageServoAngle = pTT->servoAvgAngle.sum / pTT->servoAvgAngle.numOf;
+
+            // Find out the factor that gives least yaw force at the average angle
+            float factor = TAIL_THRUST_FACTOR_MIN_FLOAT;
+            const float angleRad = DEGREES_TO_RADIANS(averageServoAngle);
+            float minAbsForce = FLT_MAX;
+            float minFactor = TAIL_THRUST_FACTOR_MIN_FLOAT;
+            _Bool done = false;
+            for (factor = TAIL_THRUST_FACTOR_MIN_FLOAT; (done == false) && (factor < TAIL_THRUST_FACTOR_MAX_FLOAT); factor += 0.1f)
             {
-                beeper(BEEPER_READY_BEEP);
-                thrTrqCalib.state = TTC_DONE;
-                thrTrqCalib.timestamp_ms = millis();
+                float absForceAtAngle = fabsf(-factor * cosf(angleRad) - sinf(angleRad)) * getPitchCorrectionAtTailAngle(angleRad, factor);
+
+                if (absForceAtAngle < minAbsForce)
+                {
+                    minAbsForce = absForceAtAngle;
+                    minFactor = factor;
+                }
+                else
+                {
+                    done = true;
+                }
             }
+
+            if (done)
+            {
+                gpMixerConfig->tri_tail_motor_thrustfactor = minFactor * 10.0f;
+
+                saveConfigAndNotify();
+
+                pTT->state = TT_DONE;
+            }
+            else
+            {
+                pTT->state = TT_FAIL;
+            }
+            pTT->timestamp_ms = millis();
         }
         else
         {
-            // I didn't stay inside limits, back to adjustment
-            thrTrqCalib.state = TTC_ACTIVE;
-            thrTrqCalib.timestamp_ms = millis();
-            if (IsDelayElapsed_ms(thrTrqCalib.lastAdjTime_ms, 200))
+            if (IsDelayElapsed_ms(pTT->timestamp_ms, 2000))
             {
-                thrTrqCalib.target++;
+                beeper(BEEPER_READY_BEEP);
+                pTT->timestamp_ms = millis();
             }
         }
         break;
-    case TTC_DONE:
-        gpMixerConfig->tri_tail_motor_thrustfactor = tailServoThrustFactor * 10.0f;
-
-        if (IsDelayElapsed_ms(thrTrqCalib.timestamp_ms, 2000))
+    case TT_DONE:
+        if (IsDelayElapsed_ms(pTT->timestamp_ms, 2000))
         {
             beeper(BEEPER_READY_BEEP);
-            thrTrqCalib.timestamp_ms = millis();
+            pTT->timestamp_ms = millis();
         }
         break;
-    case TTC_FAIL:
-        if (IsDelayElapsed_ms(thrTrqCalib.timestamp_ms, 2000))
+    case TT_FAIL:
+        if (IsDelayElapsed_ms(pTT->timestamp_ms, 2000))
         {
             beeper(BEEPER_ACC_CALIBRATION_FAIL);
-            thrTrqCalib.timestamp_ms = millis();
+            pTT->timestamp_ms = millis();
         }
         break;
     }
 }
 
+static void tailTuneModeServoSetup(struct servoSetup_t *pSS, servoParam_t *pServoConf, int16_t *pServoVal)
+{
+    // Check mode select
+    if (isRcAxisWithinDeadband(PITCH) && (rcCommand[ROLL] < -100))
+    {
+        pSS->servoVal = pServoConf->min;
+        pSS->pLimitToAdjust = &pServoConf->min;
+        beeperConfirmationBeeps(1);
+        pSS->state = SS_SETUP;
+    }
+    else if (isRcAxisWithinDeadband(ROLL) && (rcCommand[PITCH] > 100))
+    {
+        pSS->servoVal = pServoConf->middle;
+        pSS->pLimitToAdjust = &pServoConf->middle;
+        beeperConfirmationBeeps(2);
+        pSS->state = SS_SETUP;
+    }
+    else if (isRcAxisWithinDeadband(PITCH) && (rcCommand[ROLL] > 100))
+    {
+        pSS->servoVal = pServoConf->max;
+        pSS->pLimitToAdjust = &pServoConf->max;
+        beeperConfirmationBeeps(3);
+        pSS->state = SS_SETUP;
+    }
+    else if (isRcAxisWithinDeadband(ROLL) && (rcCommand[PITCH] < -100))
+    {
+        pSS->state = SS_CALIB;
+        pSS->cal.state = SS_C_IDLE;
+    }
+
+    switch (pSS->state)
+    {
+    case SS_IDLE:
+        break;
+    case SS_SETUP:
+        if (!isRcAxisWithinDeadband(YAW))
+        {
+            pSS->servoVal += -1.0f * (float)rcCommand[YAW] * dT;
+            constrain(pSS->servoVal, 950, 2050);
+            *pSS->pLimitToAdjust = pSS->servoVal;
+        }
+        break;
+    case SS_CALIB:
+        // State transition
+        if ((pSS->cal.done == true) || (pSS->cal.state == SS_C_IDLE))
+        {
+            if (pSS->cal.state == SS_C_IDLE)
+            {
+                pSS->cal.state = SS_C_CALIB_MIN_MID_MAX;
+                pSS->cal.subState = SS_C_MIN;
+                pSS->servoVal = pServoConf->min;
+                pSS->cal.avg.pCalibConfig = &gpMixerConfig->tri_servo_min_adc;
+            }
+            else if (pSS->cal.state == SS_C_CALIB_SPEED)
+            {
+                pSS->state = SS_IDLE;
+                pSS->cal.subState = SS_C_IDLE;
+                beeper(BEEPER_READY_BEEP);
+            }
+            else
+            {
+                if (pSS->cal.state == SS_C_CALIB_MIN_MID_MAX)
+                {
+                    switch (pSS->cal.subState)
+                    {
+                    case SS_C_MIN:
+                        pSS->cal.subState = SS_C_MID;
+                        pSS->servoVal = pServoConf->middle;
+                        pSS->cal.avg.pCalibConfig = &gpMixerConfig->tri_servo_mid_adc;
+                        break;
+                    case SS_C_MID:
+                        if (ABS(gpMixerConfig->tri_servo_min_adc - gpMixerConfig->tri_servo_mid_adc) < 100)
+                        {
+                            /* Not enough difference between min and mid feedback values.
+                             * Most likely the feedback signal is not connected.
+                             */
+                            pSS->state = SS_IDLE;
+                            pSS->cal.subState = SS_C_IDLE;
+                            beeper(BEEPER_ACC_CALIBRATION_FAIL);
+                            gpMixerConfig->tri_servo_feedback_mode = TRI_SERVO_VIRTUAL;
+                        }
+                        else
+                        {
+                            pSS->cal.subState = SS_C_MAX;
+                            pSS->servoVal = pServoConf->max;
+                            pSS->cal.avg.pCalibConfig = &gpMixerConfig->tri_servo_max_adc;
+                            gpMixerConfig->tri_servo_feedback_mode = TRI_SERVO_FEEDBACK;
+                        }
+                        break;
+                    case SS_C_MAX:
+                        pSS->cal.state = SS_C_CALIB_SPEED;
+                        pSS->cal.subState = SS_C_MIN;
+                        pSS->servoVal = pServoConf->min;
+                        pSS->cal.waitingServoToStop = true;
+                        break;
+                    }
+                }
+            }
+
+            pSS->cal.timestamp_ms = millis();
+            pSS->cal.avg.sum = 0;
+            pSS->cal.avg.numOf = 0;
+            pSS->cal.done = false;
+        }
+
+        switch (pSS->cal.state)
+        {
+        case SS_C_IDLE:
+            break;
+        case SS_C_CALIB_MIN_MID_MAX:
+            if (IsDelayElapsed_ms(pSS->cal.timestamp_ms, 500))
+            {
+                if (IsDelayElapsed_ms(pSS->cal.timestamp_ms, 600))
+                {
+                    *pSS->cal.avg.pCalibConfig = pSS->cal.avg.sum / pSS->cal.avg.numOf;
+                    pSS->cal.done = true;
+                }
+                else
+                {
+                    pSS->cal.avg.sum += tailServoADC;
+                    pSS->cal.avg.numOf++;
+                }
+            }
+            break;
+        case SS_C_CALIB_SPEED:
+            switch (pSS->cal.subState)
+            {
+            case SS_C_MIN:
+                // Wait for the servo to reach min position
+                if (tailServoADC < (gpMixerConfig->tri_servo_min_adc + 10))
+                {
+                    if (!pSS->cal.waitingServoToStop)
+                    {
+                        pSS->cal.avg.sum += millis() - pSS->cal.timestamp_ms;
+                        pSS->cal.avg.numOf++;
+
+                        if (pSS->cal.avg.numOf > 5)
+                        {
+                            const float avgTime = pSS->cal.avg.sum / pSS->cal.avg.numOf;
+                            const float avgServoSpeed = (2.0f * tailServoMaxAngle / 10.0f) / avgTime * 1000.0f;
+                            gpMixerConfig->tri_tail_servo_speed = avgServoSpeed;
+                            tailServoSpeed = gpMixerConfig->tri_tail_servo_speed;
+                            pSS->cal.done = true;
+                            pSS->servoVal = pServoConf->middle;
+                        }
+
+                        pSS->cal.timestamp_ms = millis();
+                        pSS->cal.waitingServoToStop = true;
+                    }
+                    // Wait for the servo to fully stop before starting speed measuring
+                    else if  (IsDelayElapsed_ms(pSS->cal.timestamp_ms, 200))
+                    {
+                        pSS->cal.timestamp_ms = millis();
+                        pSS->cal.subState = SS_C_MAX;
+                        pSS->cal.waitingServoToStop = false;
+                        pSS->servoVal = pServoConf->max;
+                    }
+                }
+                break;
+            case SS_C_MAX:
+                // Wait for the servo to reach max position
+                if (tailServoADC > (gpMixerConfig->tri_servo_max_adc - 10))
+                {
+                    if (!pSS->cal.waitingServoToStop)
+                    {
+                        pSS->cal.avg.sum += millis() - pSS->cal.timestamp_ms;
+                        pSS->cal.avg.numOf++;
+                        pSS->cal.timestamp_ms = millis();
+                        pSS->cal.waitingServoToStop = true;
+                    }
+                    else if (IsDelayElapsed_ms(pSS->cal.timestamp_ms, 200))
+                    {
+                        pSS->cal.timestamp_ms = millis();
+                        pSS->cal.subState = SS_C_MIN;
+                        pSS->cal.waitingServoToStop = false;
+                        pSS->servoVal = pServoConf->min;
+                    }
+                }
+                break;
+            case SS_C_MID:
+                // Should not come here
+                break;
+            }
+        }
+        break;
+    }
+
+
+    *pServoVal = pSS->servoVal;
+}
+
+static void updateServoAngles(void)
+{
+    // Virtual servo
+    virtualServoStep(dT, gpTailServoConf, *gpTailServo);
+
+    // Feedback servo
+    if (gpMixerConfig->tri_servo_feedback_mode == TRI_SERVO_FEEDBACK)
+    {
+        const float ADCFeedback = tailServoADC;
+        const float midValue = gpMixerConfig->tri_servo_mid_adc;
+        const float endValue = ADCFeedback < midValue ? gpMixerConfig->tri_servo_min_adc : gpMixerConfig->tri_servo_max_adc;
+        const float endAngle = ADCFeedback < gpMixerConfig->tri_servo_mid_adc ? TRI_TAIL_SERVO_ANGLE_MID - tailServoMaxAngle : TRI_TAIL_SERVO_ANGLE_MID + tailServoMaxAngle;
+        tailServoAngle.feedback = 0.1f * ((endAngle - TRI_TAIL_SERVO_ANGLE_MID) * (ADCFeedback - midValue) / (endValue - midValue) + TRI_TAIL_SERVO_ANGLE_MID);
+    }
+}

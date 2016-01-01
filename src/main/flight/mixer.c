@@ -582,7 +582,7 @@ void writeServos(void)
 
         case MIXER_TRI:
         case MIXER_CUSTOM_TRI:
-            if (mixerConfig->tri_unarmed_servo) {
+            if (triEnableServoUnarmed()) {
                 // if unarmed flag set, we always move servo
                 pwmWriteServo(servoIndex++, servo[SERVO_RUDDER]);
             } else {

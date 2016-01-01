@@ -79,6 +79,10 @@ typedef struct mixerConfig_s {
     int16_t tri_servo_angle_at_max;
     int16_t tri_tail_motor_thrustfactor;
     int16_t tri_tail_servo_speed;
+    uint16_t tri_servo_min_adc;
+    uint16_t tri_servo_mid_adc;
+    uint16_t tri_servo_max_adc;
+    uint8_t tri_servo_feedback_mode;
 #endif
 } mixerConfig_t;
 
