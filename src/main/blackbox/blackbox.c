@@ -66,6 +66,7 @@
 #include "telemetry/telemetry.h"
 
 #include "flight/mixer.h"
+#include "flight/mixer_tricopter.h"
 #include "flight/altitudehold.h"
 #include "flight/failsafe.h"
 #include "flight/imu.h"
@@ -366,7 +367,6 @@ static bool blackboxModeActivationConditionPresent = false;
 static bool blackboxIsOnlyLoggingIntraframes() {
     return masterConfig.blackbox_rate_num == 1 && masterConfig.blackbox_rate_denom == 32;
 }
-extern float triGetVirtualServoAngle();
 
 static bool testBlackboxConditionUncached(FlightLogFieldCondition condition)
 {
@@ -960,7 +960,7 @@ static void loadMainState(void)
 
 #ifdef USE_SERVOS
     //Tail servo for tricopters
-    blackboxCurrent->servo[5] = triGetVirtualServoAngle() * 10.0f;
+    blackboxCurrent->servo[5] = triGetCurrentActiveServoAngle() * 10.0f;
 #endif
 }
 

@@ -132,7 +132,7 @@ static uint32_t activeFeaturesLatch = 0;
 static uint8_t currentControlRateProfileIndex = 0;
 controlRateConfig_t *currentControlRateProfile;
 
-static const uint8_t EEPROM_CONF_VERSION = 110;
+static const uint8_t EEPROM_CONF_VERSION = 111;
 
 static void resetAccelerometerTrims(flightDynamicsTrims_t *accelerometerTrims)
 {
@@ -338,6 +338,10 @@ void resetMixerConfig(mixerConfig_t *mixerConfig) {
     mixerConfig->tri_servo_angle_at_max = 400;
     mixerConfig->tri_tail_motor_thrustfactor = 138;
     mixerConfig->tri_tail_servo_speed = 300; // Default for BMS-210DMH at 5V
+    mixerConfig->tri_servo_min_adc = 0;
+    mixerConfig->tri_servo_mid_adc = 0;
+    mixerConfig->tri_servo_max_adc = 0;
+    mixerConfig->tri_servo_feedback_mode = 0;
 #endif
 }
 
