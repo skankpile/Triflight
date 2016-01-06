@@ -214,9 +214,18 @@ static void pidLuxFloat(pidProfile_t *pidProfile, controlRateConfig_t *controlRa
 
         PTerm = RateError * pidProfile->P_f[axis] * PIDweight[axis] / 100;
 
+        const float newIntegral = constrainf(errorGyroIf[axis] + RateError * dT * pidProfile->I_f[axis] * 10 * Iweigth[axis] / 100, -PID_LUX_FLOAT_MAX_I, PID_LUX_FLOAT_MAX_I);
         if (fabsf(RateError) < LUXFLOAT_INTEGRATOR_DISABLE_LIMIT_DPS)
         {
             errorGyroIf[axis] = constrainf(errorGyroIf[axis] + RateError * dT * pidProfile->I_f[axis] * 10 * Iweigth[axis] / 100, -PID_LUX_FLOAT_MAX_I, PID_LUX_FLOAT_MAX_I);
+        }
+        else
+        {
+            // Shrink only
+            if (fabsf(newIntegral) < fabsf(errorGyroIf[axis]))
+            {
+                errorGyroIf[axis] = newIntegral;
+            }
         }
 
         // limit maximum integrator value to prevent WindUp - accumulating extreme values when system is saturated.
