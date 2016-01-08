@@ -226,7 +226,7 @@ int16_t triGetMotorCorrection(uint8_t motorIndex)
         const int16_t servoAngle = triGetVirtualServoAngle() * 10.0f;
         const int16_t servoSetpointAngle = getServoAngle(gpTailServoConf, *gpTailServo);
 
-        uint16_t maxPhaseShift = getPitchCorrectionMaxPhaseShift(servoAngle, servoSetpointAngle, tailMotorAccelerationDelay_angle, tailMotorDecelerationDelay_angle, tailMotorPitchZeroAngle);
+        const uint16_t maxPhaseShift = getPitchCorrectionMaxPhaseShift(servoAngle, servoSetpointAngle, tailMotorAccelerationDelay_angle, tailMotorDecelerationDelay_angle, tailMotorPitchZeroAngle);
 
         int16_t angleDiff = servoSetpointAngle - servoAngle;
         if (ABS(angleDiff) > maxPhaseShift)
@@ -235,7 +235,7 @@ int16_t triGetMotorCorrection(uint8_t motorIndex)
         }
 
         const int16_t futureServoAngle = constrain(servoAngle + angleDiff, TRI_TAIL_SERVO_ANGLE_MID - tailServoMaxAngle, TRI_TAIL_SERVO_ANGLE_MID + tailServoMaxAngle);
-        uint16_t throttleMotorOutput = rcCommand[THROTTLE] - getCurrentMinthrottle();
+        const uint16_t throttleMotorOutput = rcCommand[THROTTLE] - getCurrentMinthrottle();
         correction = (throttleMotorOutput * getPitchCorrectionAtTailAngle(DEGREES_TO_RADIANS(futureServoAngle / 10.0f))) - throttleMotorOutput;
     }
 
@@ -244,12 +244,12 @@ int16_t triGetMotorCorrection(uint8_t motorIndex)
 
 static uint16_t getServoValueAtAngle(servoParam_t *servoConf, uint16_t angle)
 {
-    int16_t servoMid = servoConf->middle;
+    const int16_t servoMid = servoConf->middle;
     uint16_t servoValue;
 
     if (angle < TRI_TAIL_SERVO_ANGLE_MID)
     {
-        int16_t servoMin = servoConf->min;
+        const int16_t servoMin = servoConf->min;
         servoValue = (int32_t)(angle - tailServoMaxAngle) * (servoMid - servoMin) / (TRI_TAIL_SERVO_ANGLE_MID - tailServoMaxAngle) + servoMin;
     }
     else if (angle > TRI_TAIL_SERVO_ANGLE_MID)
@@ -361,13 +361,14 @@ static void triThrustTorqueCalibrationStep()
         }
         return;
     }
-    throttleStatus_e throttleStatus = calculateThrottleStatus(&masterConfig.rxConfig, masterConfig.flight3DConfig.deadband3d_throttle);
+
+    const bool isThrottleHigh = (THROTTLE_HIGH == calculateThrottleStatus(&masterConfig.rxConfig, masterConfig.flight3DConfig.deadband3d_throttle));
 
     switch(thrTrqCalib.state)
     {
     case TTC_IDLE:
         // Calibration has been requested, only start when throttle is up
-        if (throttleStatus == THROTTLE_HIGH)
+        if (isThrottleHigh)
         {
             ENABLE_FLIGHT_MODE(TAILTUNE_MODE);
             beeper(BEEPER_READY_BEEP);
@@ -378,7 +379,7 @@ static void triThrustTorqueCalibrationStep()
         }
         break;
     case TTC_ACTIVE:
-        if ((throttleStatus == THROTTLE_HIGH) &&
+        if (isThrottleHigh &&
             isRcAxisWithinDeadband(ROLL) &&
             isRcAxisWithinDeadband(PITCH) &&
             isRcAxisWithinDeadband(YAW))
@@ -388,8 +389,7 @@ static void triThrustTorqueCalibrationStep()
                 // RC commands have been within deadbands for 500ms
                 if (IsDelayElapsed_ms(thrTrqCalib.lastAdjTime_ms, 500))
                 {
-                    thrTrqCalib.lastAdjTime_ms = millis();
-                    int32_t abs_I = ABS(axisPID_I[YAW]);
+                    const int32_t abs_I = ABS(axisPID_I[YAW]);
                     if (abs_I < thrTrqCalib.target)
                     {
                         // I is within limits
@@ -398,11 +398,8 @@ static void triThrustTorqueCalibrationStep()
                     }
                     else
                     {
-                        float increment;
-                        uint8_t beeps;
-
                         // Base increment is 0.1f which is the resolution of the CLI parameter
-                        increment = 0.1f;
+                        float increment = 0.1f;
 
                         // If I term is greater than the limit, use greater increment for faster result
                         if (abs_I > TT_CALIB_I_LARGE_INCREMENT_LIMIT)
@@ -410,16 +407,12 @@ static void triThrustTorqueCalibrationStep()
                             increment += 0.15f * ((float)abs_I / TT_CALIB_I_LARGE_INCREMENT_LIMIT);
                         }
 
+                        uint8_t beeps = 2;
                         if (axisPID_I[YAW] > 0)
                         {
                             increment *= -1.0f;
                             beeps = 1;
                         }
-                        else
-                        {
-                            beeps = 2;
-                        }
-
                         beeperConfirmationBeeps(beeps);
 
                         float newThrustFactor = tailServoThrustFactor + increment;
@@ -433,9 +426,9 @@ static void triThrustTorqueCalibrationStep()
                         {
                             tailServoThrustFactor = newThrustFactor;
                             initCurves();
-                            thrTrqCalib.lastAdjTime_ms = millis();
                         }
                     }
+                    thrTrqCalib.lastAdjTime_ms = millis();
                 }
             }
         }
@@ -445,7 +438,7 @@ static void triThrustTorqueCalibrationStep()
         }
         break;
     case TTC_CHECK_WITHIN_LIMITS:
-        if ((throttleStatus == THROTTLE_HIGH) &&
+        if (isThrottleHigh &&
             (ABS(axisPID_I[YAW]) < thrTrqCalib.target))
         {
             if (IsDelayElapsed_ms(thrTrqCalib.timestamp_ms, 1000))
@@ -460,7 +453,6 @@ static void triThrustTorqueCalibrationStep()
             // I didn't stay inside limits, back to adjustment
             thrTrqCalib.state = TTC_ACTIVE;
             thrTrqCalib.timestamp_ms = millis();
-            thrTrqCalib.lastAdjTime_ms = millis();
             if (IsDelayElapsed_ms(thrTrqCalib.lastAdjTime_ms, 200))
             {
                 thrTrqCalib.target++;
@@ -484,6 +476,5 @@ static void triThrustTorqueCalibrationStep()
         }
         break;
     }
-
 }
 
