@@ -202,7 +202,7 @@ static uint16_t getPitchCorrectionMaxPhaseShift(int16_t servoAngle,
         int16_t motorDirectionChangeAngle);
 static uint16_t getLinearServoValue(servoParam_t *servoConf, uint16_t servoValue);
 static void virtualServoStep(float dT, servoParam_t *servoConf, uint16_t servoValue);
-static void tailTuneModeThrustTorque(struct thrustTorque_t *pTT, throttleStatus_e throttleStatus);
+static void tailTuneModeThrustTorque(struct thrustTorque_t *pTT, const bool isThrottleHigh);
 static void tailTuneModeServoSetup(struct servoSetup_t *pSS, servoParam_t *pServoConf, int16_t *pServoVal);
 static void triTailTuneStep(servoParam_t *pServoConf, int16_t *pServoVal);
 static void updateServoAngles(void);
@@ -445,7 +445,6 @@ static void virtualServoStep(float dT, servoParam_t *servoConf, uint16_t servoVa
 
 static void triTailTuneStep(servoParam_t *pServoConf, int16_t *pServoVal)
 {
-    throttleStatus_e throttleStatus;
     if (!IS_RC_MODE_ACTIVE(BOXTAILTUNE))
     {
         if (FLIGHT_MODE(TAILTUNE_MODE))
@@ -458,7 +457,6 @@ static void triTailTuneStep(servoParam_t *pServoConf, int16_t *pServoVal)
     }
     else
     {
-        throttleStatus = calculateThrottleStatus(&masterConfig.rxConfig, masterConfig.flight3DConfig.deadband3d_throttle);
         ENABLE_FLIGHT_MODE(TAILTUNE_MODE);
     }
 
@@ -481,7 +479,9 @@ static void triTailTuneStep(servoParam_t *pServoConf, int16_t *pServoVal)
     switch (tailTune.mode)
     {
     case TT_MODE_THRUST_TORQUE:
-        tailTuneModeThrustTorque(&tailTune.tt, throttleStatus);
+        tailTuneModeThrustTorque(
+                &tailTune.tt,
+                (THROTTLE_HIGH == calculateThrottleStatus(&masterConfig.rxConfig, masterConfig.flight3DConfig.deadband3d_throttle)));
         break;
     case TT_MODE_SERVO_SETUP:
         tailTuneModeServoSetup(&tailTune.ss, pServoConf, pServoVal);
@@ -491,13 +491,13 @@ static void triTailTuneStep(servoParam_t *pServoConf, int16_t *pServoVal)
     }
 }
 
-static void tailTuneModeThrustTorque(struct thrustTorque_t *pTT, throttleStatus_e throttleStatus)
+static void tailTuneModeThrustTorque(struct thrustTorque_t *pTT, const bool isThrottleHigh)
 {
     switch(pTT->state)
     {
     case TT_IDLE:
         // Calibration has been requested, only start when throttle is up
-        if ((throttleStatus == THROTTLE_HIGH) && ARMING_FLAG(ARMED))
+        if (isThrottleHigh && ARMING_FLAG(ARMED))
         {
             beeper(BEEPER_READY_BEEP);
             pTT->timestamp_ms = millis();
@@ -508,7 +508,7 @@ static void tailTuneModeThrustTorque(struct thrustTorque_t *pTT, throttleStatus_
         }
         break;
     case TT_WAIT:
-        if ((throttleStatus == THROTTLE_HIGH) && ARMING_FLAG(ARMED))
+        if (isThrottleHigh && ARMING_FLAG(ARMED))
         {
             /* Wait for 5 seconds before activating the tuning.
             This is so that pilot has time to take off if the tail tune mode was activated on ground. */
@@ -524,7 +524,7 @@ static void tailTuneModeThrustTorque(struct thrustTorque_t *pTT, throttleStatus_
         }
         break;
     case TT_ACTIVE:
-        if ((throttleStatus == THROTTLE_HIGH) &&
+        if (isThrottleHigh &&
             isRcAxisWithinDeadband(ROLL) &&
             isRcAxisWithinDeadband(PITCH) &&
             isRcAxisWithinDeadband(YAW) &&
