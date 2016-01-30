@@ -171,7 +171,7 @@
 
 #define GPS
 
-#define GTUNE
+//#define GTUNE
 
 #define LED_STRIP
 #define LED_STRIP_TIMER TIM3
