@@ -67,7 +67,7 @@ int32_t axisPID_P[3], axisPID_I[3], axisPID_D[3];
 uint8_t dynP8[3], dynI8[3], dynD8[3], PIDweight[3], Iweigth[3] = {0};
 
 static int32_t errorGyroI[3], errorGyroILimit[3];
-static float errorGyroIf[3], errorGyroIfLimit[3];
+static float errorGyroIf[3];
 static int32_t errorAngleI[2];
 static float errorAngleIf[2];
 
@@ -225,19 +225,6 @@ static void pidLuxFloat(pidProfile_t *pidProfile, controlRateConfig_t *controlRa
             if (fabsf(newIntegral) < fabsf(errorGyroIf[axis]))
             {
                 errorGyroIf[axis] = newIntegral;
-            }
-        }
-
-        // limit maximum integrator value to prevent WindUp - accumulating extreme values when system is saturated.
-        // I coefficient (I8) moved before integration to make limiting independent from PID settings
-
-        // Anti windup protection
-        if (IS_RC_MODE_ACTIVE(BOXAIRMODE)) {
-            errorGyroIf[axis] = errorGyroIf[axis] * scaleItermToRcInput(axis);
-            if (STATE(ANTI_WINDUP) || motorLimitReached) {
-                errorGyroIf[axis] = constrainf(errorGyroIf[axis], -errorGyroIfLimit[axis], errorGyroIfLimit[axis]);
-            } else {
-                errorGyroIfLimit[axis] = ABS(errorGyroIf[axis]);
             }
         }
 
