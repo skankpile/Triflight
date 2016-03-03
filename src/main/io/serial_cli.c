@@ -384,6 +384,10 @@ static const char * const lookupDeltaMethod[] = {
     "ERROR", "MEASUREMENT"
 };
 
+static const char * const lookupServoFeedback[] = {
+    "VIRTUAL", "RSSI", "CURRENT", "EXT1"
+};
+
 typedef struct lookupTableEntry_s {
     const char * const *values;
     const uint8_t valueCount;
@@ -407,6 +411,7 @@ typedef enum {
     TABLE_GYRO_FILTER,
     TABLE_GYRO_LPF,
     TABLE_DELTA_METHOD,
+    TABLE_SERVO_FEEDBACK,
 } lookupTableIndex_e;
 
 static const lookupTableEntry_t lookupTables[] = {
@@ -426,7 +431,8 @@ static const lookupTableEntry_t lookupTables[] = {
     { lookupTableSerialRX, sizeof(lookupTableSerialRX) / sizeof(char *) },
     { lookupTableGyroFilter, sizeof(lookupTableGyroFilter) / sizeof(char *) },
     { lookupTableGyroLpf, sizeof(lookupTableGyroLpf) / sizeof(char *) },
-    { lookupDeltaMethod, sizeof(lookupDeltaMethod) / sizeof(char *) }
+    { lookupDeltaMethod, sizeof(lookupDeltaMethod) / sizeof(char *) },
+    { lookupServoFeedback, sizeof(lookupServoFeedback) / sizeof(char *) }
 };
 
 #define VALUE_TYPE_OFFSET 0
@@ -601,6 +607,7 @@ const clivalue_t valueTable[] = {
     { "tri_servo_angle_at_max",     VAR_INT16  | MASTER_VALUE, &masterConfig.mixerConfig.tri_servo_angle_at_max, .config.minmax = { 0, 500 } },
     { "tri_tail_motor_thrustfactor",VAR_INT16  | MASTER_VALUE, &masterConfig.mixerConfig.tri_tail_motor_thrustfactor, .config.minmax = { TAIL_THRUST_FACTOR_MIN, TAIL_THRUST_FACTOR_MAX } },
     { "tri_tail_servo_speed",       VAR_INT16  | MASTER_VALUE, &masterConfig.mixerConfig.tri_tail_servo_speed, .config.minmax = { 0, 1000 } },
+    { "tri_servo_feedback",         VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, &masterConfig.mixerConfig.tri_servo_feedback, .config.lookup = { TABLE_SERVO_FEEDBACK } },
 #endif
 
     { "default_rate_profile",       VAR_UINT8  | PROFILE_VALUE , &masterConfig.profile[0].defaultRateProfileIndex, .config.minmax = { 0,  MAX_CONTROL_RATE_PROFILE_COUNT - 1 } },

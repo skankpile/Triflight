@@ -189,6 +189,8 @@ static int16_t *gpTailServo;
 static mixerConfig_t *gpMixerConfig;
 
 static uint16_t tailServoADC = 0;
+static AdcChannel tailServoADCChannel = ADC_EXTERNAL1;
+
 
 static void initCurves();
 static uint16_t getServoValueAtAngle(servoParam_t * servoConf, uint16_t angle);
@@ -205,7 +207,8 @@ static void virtualServoStep(float dT, servoParam_t *servoConf, uint16_t servoVa
 static void tailTuneModeThrustTorque(struct thrustTorque_t *pTT, const bool isThrottleHigh);
 static void tailTuneModeServoSetup(struct servoSetup_t *pSS, servoParam_t *pServoConf, int16_t *pServoVal);
 static void triTailTuneStep(servoParam_t *pServoConf, int16_t *pServoVal);
-static void updateServoAngles(void);
+static void updateServoAngle(void);
+static void updateServoFeedbackADCChannel(uint8_t tri_servo_feedback);
 #endif
 
 void triInitMixer(servoParam_t *pTailServoConfig,
@@ -220,6 +223,7 @@ void triInitMixer(servoParam_t *pTailServoConfig,
     gpMixerConfig = pMixerConfig;
 
     initCurves();
+    updateServoFeedbackADCChannel(gpMixerConfig->tri_servo_feedback);
 }
 
 static void initCurves()
@@ -255,13 +259,13 @@ static void initCurves()
 
 float triGetCurrentActiveServoAngle(void)
 {
-    if (gpMixerConfig->tri_servo_feedback_mode == TRI_SERVO_FEEDBACK)
+    if (gpMixerConfig->tri_servo_feedback == TRI_SERVO_FB_VIRTUAL)
     {
-        return triGetCurrentServoAngle(TRI_SERVO_FEEDBACK);
+        return triGetCurrentServoAngle(TRI_SERVO_VIRTUAL);
     }
     else
     {
-        return triGetCurrentServoAngle(TRI_SERVO_VIRTUAL);
+        return triGetCurrentServoAngle(TRI_SERVO_FEEDBACK);
     }
 }
 
@@ -291,8 +295,13 @@ static uint16_t getLinearServoValue(servoParam_t *servoConf, uint16_t servoValue
 void triServoMixer()
 {
     static filterStatePt1_t feedbackFilter;
-    tailServoADC = filterApplyPt1(adcGetChannel(ADC_EXTERNAL1), &feedbackFilter, 70, dT);
+    if (gpMixerConfig->tri_servo_feedback != TRI_SERVO_FB_VIRTUAL)
+    {
+        // Read new servo feedback signal sample and run it through filter
+        tailServoADC = filterApplyPt1(adcGetChannel(tailServoADCChannel), &feedbackFilter, 70, dT);
+    }
 
+    // Linear servo logic only in armed state
     if (ARMING_FLAG(ARMED))
     {
         *gpTailServo = getLinearServoValue(gpTailServoConf, *gpTailServo);
@@ -300,7 +309,7 @@ void triServoMixer()
 
     triTailTuneStep(gpTailServoConf, gpTailServo);
 
-    updateServoAngles();
+    updateServoAngle();
 }
 
 int16_t triGetMotorCorrection(uint8_t motorIndex)
@@ -701,14 +710,12 @@ static void tailTuneModeServoSetup(struct servoSetup_t *pSS, servoParam_t *pServ
                             pSS->state = SS_IDLE;
                             pSS->cal.subState = SS_C_IDLE;
                             beeper(BEEPER_ACC_CALIBRATION_FAIL);
-                            gpMixerConfig->tri_servo_feedback_mode = TRI_SERVO_VIRTUAL;
                         }
                         else
                         {
                             pSS->cal.subState = SS_C_MAX;
                             pSS->servoVal = pServoConf->max;
                             pSS->cal.avg.pCalibConfig = &gpMixerConfig->tri_servo_max_adc;
-                            gpMixerConfig->tri_servo_feedback_mode = TRI_SERVO_FEEDBACK;
                         }
                         break;
                     case SS_C_MAX:
@@ -813,18 +820,39 @@ static void tailTuneModeServoSetup(struct servoSetup_t *pSS, servoParam_t *pServ
     *pServoVal = pSS->servoVal;
 }
 
-static void updateServoAngles(void)
+static void updateServoAngle(void)
 {
-    // Virtual servo
-    virtualServoStep(dT, gpTailServoConf, *gpTailServo);
-
-    // Feedback servo
-    if (gpMixerConfig->tri_servo_feedback_mode == TRI_SERVO_FEEDBACK)
+    if (gpMixerConfig->tri_servo_feedback == TRI_SERVO_FB_VIRTUAL)
     {
+        // Virtual servo
+        virtualServoStep(dT, gpTailServoConf, *gpTailServo);
+    }
+    else
+    {
+        // Feedback servo
         const float ADCFeedback = tailServoADC;
         const float midValue = gpMixerConfig->tri_servo_mid_adc;
         const float endValue = ADCFeedback < midValue ? gpMixerConfig->tri_servo_min_adc : gpMixerConfig->tri_servo_max_adc;
         const float endAngle = ADCFeedback < gpMixerConfig->tri_servo_mid_adc ? TRI_TAIL_SERVO_ANGLE_MID - tailServoMaxAngle : TRI_TAIL_SERVO_ANGLE_MID + tailServoMaxAngle;
         tailServoAngle.feedback = 0.1f * ((endAngle - TRI_TAIL_SERVO_ANGLE_MID) * (ADCFeedback - midValue) / (endValue - midValue) + TRI_TAIL_SERVO_ANGLE_MID);
+    }
+}
+
+static void updateServoFeedbackADCChannel(uint8_t tri_servo_feedback)
+{
+    switch (tri_servo_feedback)
+    {
+    case TRI_SERVO_FB_RSSI:
+        tailServoADCChannel = ADC_RSSI;
+        break;
+    case TRI_SERVO_FB_CURRENT:
+        tailServoADCChannel = ADC_CURRENT;
+        break;
+    case TRI_SERVO_FB_EXT1:
+        tailServoADCChannel = ADC_EXTERNAL1;
+        break;
+    default:
+        tailServoADCChannel = ADC_EXTERNAL1;
+        break;
     }
 }

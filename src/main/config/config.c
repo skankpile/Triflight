@@ -62,6 +62,7 @@
 #include "telemetry/telemetry.h"
 
 #include "flight/mixer.h"
+#include "flight/mixer_tricopter.h"
 #include "flight/pid.h"
 #include "flight/imu.h"
 #include "flight/failsafe.h"
@@ -136,7 +137,7 @@ static uint32_t activeFeaturesLatch = 0;
 static uint8_t currentControlRateProfileIndex = 0;
 controlRateConfig_t *currentControlRateProfile;
 
-static const uint8_t EEPROM_CONF_VERSION = 111;
+static const uint8_t EEPROM_CONF_VERSION = 112;
 
 void resetPidProfile(pidProfile_t *pidProfile)
 {
@@ -315,7 +316,7 @@ static void resetMixerConfig(mixerConfig_t *mixerConfig) {
     mixerConfig->tri_servo_min_adc = 0;
     mixerConfig->tri_servo_mid_adc = 0;
     mixerConfig->tri_servo_max_adc = 0;
-    mixerConfig->tri_servo_feedback_mode = 0;
+    mixerConfig->tri_servo_feedback = TRI_SERVO_FB_VIRTUAL;
 #endif
 }
 

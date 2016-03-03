@@ -30,6 +30,14 @@ typedef enum {
     TRI_SERVO_FEEDBACK,     ///< Feedback signal from servo
 } triServoType_e;
 
+/** @brief Servo feedback sources. */
+typedef enum {
+    TRI_SERVO_FB_VIRTUAL = 0,  ///< Virtual servo, no physical feedback signal from servo
+    TRI_SERVO_FB_RSSI,         ///< Feedback signal from RSSI ADC
+    TRI_SERVO_FB_CURRENT,      ///< Feedback signal from CURRENT ADC
+    TRI_SERVO_FB_EXT1,         ///< Feedback signal from EXT1 ADC
+} triServoFeedbackSource_e;
+
 /** @brief Initialize tricopter specific mixer functionality.
  *
  *  @param pTailServoConfig Pointer to tail servo configuration
