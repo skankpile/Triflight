@@ -981,7 +981,7 @@ static void loadMainState(void)
 
 #ifdef USE_SERVOS
     //Tail servo for tricopters
-    blackboxCurrent->servo[5] = triGetCurrentActiveServoAngle() * 10.0f;
+    blackboxCurrent->servo[5] = triGetCurrentServoAngle();
 #endif
 }
 

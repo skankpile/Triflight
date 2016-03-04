@@ -24,12 +24,6 @@
 #define TAIL_THRUST_FACTOR_MIN_FLOAT  (TAIL_THRUST_FACTOR_MIN / 10.0f)
 #define TAIL_THRUST_FACTOR_MAX_FLOAT  (TAIL_THRUST_FACTOR_MAX / 10.0f)
 
-/** @brief Servo types. */
-typedef enum {
-    TRI_SERVO_VIRTUAL = 0,  ///< Virtual servo, no physical feedback signal from servo
-    TRI_SERVO_FEEDBACK,     ///< Feedback signal from servo
-} triServoType_e;
-
 /** @brief Servo feedback sources. */
 typedef enum {
     TRI_SERVO_FB_VIRTUAL = 0,  ///< Virtual servo, no physical feedback signal from servo
@@ -50,17 +44,11 @@ void triInitMixer(servoParam_t *pTailServoConfig,
         int16_t *pTailServo,
         mixerConfig_t *pMixerConfig);
 
-/** @brief Get current tail servo angle from the active feedback sensor.
+/** @brief Get current tail servo angle.
  *
- *  @return Servo angle.
+ *  @return Servo angle in decidegrees.
  */
-float triGetCurrentActiveServoAngle(void);
-
-/** @brief Get current tail servo angle based on feedback type (virtual or feedback).
- *
- *  @return Servo angle.
- */
-float triGetCurrentServoAngle(triServoType_e servoType);
+uint16_t triGetCurrentServoAngle();
 
 /** @brief Perform tricopter mixer actions.
  *

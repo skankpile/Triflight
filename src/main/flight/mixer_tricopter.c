@@ -134,7 +134,7 @@ typedef struct tailTune_s {
         uint32_t lastAdjTime_ms;
         struct servoAvgAngle_t
         {
-            float sum;
+            uint32_t sum;
             uint16_t numOf;
         } servoAvgAngle;
     }tt;
@@ -171,12 +171,7 @@ static int32_t tailServoMaxYawForce = 0;
  float tailServoThrustFactor = 0;
 static int16_t tailServoMaxAngle = 0;
 static int16_t tailServoSpeed = 0;
-
-struct triServoAngle_t
-{
-    float virtual;
-    float feedback;
-} tailServoAngle = {.virtual = TRI_TAIL_SERVO_ANGLE_MID / 10.0f, .feedback = TRI_TAIL_SERVO_ANGLE_MID / 10.0f};
+static uint16_t tailServoAngle = TRI_TAIL_SERVO_ANGLE_MID;
 static int32_t yawForceCurve[TRI_YAW_FORCE_CURVE_SIZE];
 static int16_t tailMotorPitchZeroAngle;
 static int16_t tailMotorAccelerationDelay_ms = 30;
@@ -203,7 +198,8 @@ static uint16_t getPitchCorrectionMaxPhaseShift(int16_t servoAngle,
         int16_t motorDecelerationDelayAngle,
         int16_t motorDirectionChangeAngle);
 static uint16_t getLinearServoValue(servoParam_t *servoConf, uint16_t servoValue);
-static void virtualServoStep(float dT, servoParam_t *servoConf, uint16_t servoValue);
+static uint16_t virtualServoStep(uint16_t currentAngle, int16_t servoSpeed, float dT, servoParam_t *servoConf, uint16_t servoValue);
+static uint16_t feedbackServoStep(mixerConfig_t *mixerConf, uint16_t tailServoADC);
 static void tailTuneModeThrustTorque(struct thrustTorque_t *pTT, const bool isThrottleHigh);
 static void tailTuneModeServoSetup(struct servoSetup_t *pSS, servoParam_t *pServoConf, int16_t *pServoVal);
 static void triTailTuneStep(servoParam_t *pServoConf, int16_t *pServoVal);
@@ -257,28 +253,9 @@ static void initCurves()
     tailServoMaxYawForce = MIN(ABS(maxNegForce), ABS(maxPosForce));
 }
 
-float triGetCurrentActiveServoAngle(void)
+uint16_t triGetCurrentServoAngle()
 {
-    if (gpMixerConfig->tri_servo_feedback == TRI_SERVO_FB_VIRTUAL)
-    {
-        return triGetCurrentServoAngle(TRI_SERVO_VIRTUAL);
-    }
-    else
-    {
-        return triGetCurrentServoAngle(TRI_SERVO_FEEDBACK);
-    }
-}
-
-float triGetCurrentServoAngle(triServoType_e servoType)
-{
-    if (servoType == TRI_SERVO_VIRTUAL)
-    {
-        return tailServoAngle.virtual;
-    }
-    else
-    {
-        return tailServoAngle.feedback;
-    }
+    return tailServoAngle;
 }
 
 static uint16_t getLinearServoValue(servoParam_t *servoConf, uint16_t servoValue)
@@ -290,7 +267,6 @@ static uint16_t getLinearServoValue(servoParam_t *servoConf, uint16_t servoValue
     const int16_t correctedAngle = getAngleFromYawCurveAtForce(linearYawForceAtValue);
     return getServoValueAtAngle(servoConf, correctedAngle);
 }
-
 
 void triServoMixer()
 {
@@ -320,8 +296,8 @@ int16_t triGetMotorCorrection(uint8_t motorIndex)
         // Adjust tail motor speed based on servo angle. Check how much to adjust speed from pitch force curve based on servo angle.
         // Take motor speed up lag into account by shifting the phase of the curve
         // Not taking into account the motor braking lag (yet)
-        const int16_t servoAngle = triGetCurrentActiveServoAngle() * 10.0f;
-        const int16_t servoSetpointAngle = getServoAngle(gpTailServoConf, *gpTailServo);
+        const uint16_t servoAngle = triGetCurrentServoAngle();
+        const uint16_t servoSetpointAngle = getServoAngle(gpTailServoConf, *gpTailServo);
 
         const uint16_t maxPhaseShift = getPitchCorrectionMaxPhaseShift(servoAngle, servoSetpointAngle, tailMotorAccelerationDelay_angle, tailMotorDecelerationDelay_angle, tailMotorPitchZeroAngle);
 
@@ -433,23 +409,37 @@ static uint16_t getPitchCorrectionMaxPhaseShift(int16_t servoAngle,
     return maxPhaseShift;
 }
 
-static void virtualServoStep(float dT, servoParam_t *servoConf, uint16_t servoValue)
+static uint16_t virtualServoStep(uint16_t currentAngle, int16_t servoSpeed, float dT, servoParam_t *servoConf, uint16_t servoValue)
 {
-    const float angleSetPoint = getServoAngle(servoConf, servoValue) / 10.0f;
-    const float dA = dT * tailServoSpeed; // Max change of an angle since last check
-    if ( fabsf(tailServoAngle.virtual - angleSetPoint) < dA )
+    const uint16_t angleSetPoint = getServoAngle(servoConf, servoValue) / 10.0f;
+    const uint16_t dA = dT * servoSpeed * 10; // Max change of an angle since last check
+
+    if ( ABS(currentAngle - angleSetPoint) < dA )
     {
         // At set-point after this moment
-        tailServoAngle.virtual = angleSetPoint;
+        currentAngle = angleSetPoint;
     }
-    else if (tailServoAngle.virtual < angleSetPoint)
+    else if (currentAngle < angleSetPoint)
     {
-        tailServoAngle.virtual += dA;
+        currentAngle += dA;
     }
     else // tailServoAngle.virtual > angleSetPoint
     {
-        tailServoAngle.virtual -= dA;
+        currentAngle -= dA;
     }
+
+    return currentAngle;
+}
+
+static uint16_t feedbackServoStep(mixerConfig_t *mixerConf, uint16_t tailServoADC)
+{
+    // Feedback servo
+    const int32_t ADCFeedback = tailServoADC;
+    const int16_t midValue = mixerConf->tri_servo_mid_adc;
+    const int16_t endValue = ADCFeedback < midValue ? mixerConf->tri_servo_min_adc : mixerConf->tri_servo_max_adc;
+    const int16_t tailServoMaxAngle = mixerConf->tri_servo_angle_at_max;
+    const int16_t endAngle = ADCFeedback < midValue ? TRI_TAIL_SERVO_ANGLE_MID - tailServoMaxAngle : TRI_TAIL_SERVO_ANGLE_MID + tailServoMaxAngle;
+    return ((endAngle - TRI_TAIL_SERVO_ANGLE_MID) * (ADCFeedback - midValue) / (endValue - midValue) + TRI_TAIL_SERVO_ANGLE_MID);
 }
 
 static void triTailTuneStep(servoParam_t *pServoConf, int16_t *pServoVal)
@@ -541,12 +531,12 @@ static void tailTuneModeThrustTorque(struct thrustTorque_t *pTT, const bool isTh
         {
             if (IsDelayElapsed_ms(pTT->timestamp_ms, 250))
             {
-                // RC commands have been within deadbands for 500ms
+                // RC commands have been within deadbands for 250 ms
                 if (IsDelayElapsed_ms(pTT->lastAdjTime_ms, 10))
                 {
                     pTT->lastAdjTime_ms = millis();
 
-                    pTT->servoAvgAngle.sum += triGetCurrentActiveServoAngle();
+                    pTT->servoAvgAngle.sum += triGetCurrentServoAngle();
                     pTT->servoAvgAngle.numOf++;
 
                     beeperConfirmationBeeps(1);
@@ -568,7 +558,7 @@ static void tailTuneModeThrustTorque(struct thrustTorque_t *pTT, const bool isTh
     case TT_WAIT_FOR_DISARM:
         if (!ARMING_FLAG(ARMED))
         {
-            float averageServoAngle = pTT->servoAvgAngle.sum / pTT->servoAvgAngle.numOf;
+            float averageServoAngle = pTT->servoAvgAngle.sum / 10.0f / pTT->servoAvgAngle.numOf;
 
             // Find out the factor that gives least yaw force at the average angle
             float factor = TAIL_THRUST_FACTOR_MIN_FLOAT;
@@ -824,17 +814,11 @@ static void updateServoAngle(void)
 {
     if (gpMixerConfig->tri_servo_feedback == TRI_SERVO_FB_VIRTUAL)
     {
-        // Virtual servo
-        virtualServoStep(dT, gpTailServoConf, *gpTailServo);
+        tailServoAngle = virtualServoStep(tailServoAngle, tailServoSpeed, dT, gpTailServoConf, *gpTailServo);
     }
     else
     {
-        // Feedback servo
-        const float ADCFeedback = tailServoADC;
-        const float midValue = gpMixerConfig->tri_servo_mid_adc;
-        const float endValue = ADCFeedback < midValue ? gpMixerConfig->tri_servo_min_adc : gpMixerConfig->tri_servo_max_adc;
-        const float endAngle = ADCFeedback < gpMixerConfig->tri_servo_mid_adc ? TRI_TAIL_SERVO_ANGLE_MID - tailServoMaxAngle : TRI_TAIL_SERVO_ANGLE_MID + tailServoMaxAngle;
-        tailServoAngle.feedback = 0.1f * ((endAngle - TRI_TAIL_SERVO_ANGLE_MID) * (ADCFeedback - midValue) / (endValue - midValue) + TRI_TAIL_SERVO_ANGLE_MID);
+        tailServoAngle = feedbackServoStep(gpMixerConfig, tailServoADC);
     }
 }
 
