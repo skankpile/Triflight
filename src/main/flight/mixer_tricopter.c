@@ -130,6 +130,7 @@ typedef struct tailTune_s {
     struct thrustTorque_t
     {
         tailTuneState_e state;
+        uint32_t startBeepDelay_ms;
         uint32_t timestamp_ms;
         uint32_t lastAdjTime_ms;
         struct servoAvgAngle_t
@@ -265,6 +266,8 @@ static uint16_t getLinearServoValue(servoParam_t *servoConf, uint16_t servoValue
     const int16_t servoRange = (servoValue < servoMid) ? servoMid - servoConf->min : servoConf->max - servoMid;
     const int32_t linearYawForceAtValue = (int32_t)(tailServoMaxYawForce) * (servoValue - servoMid) / servoRange;
     const int16_t correctedAngle = getAngleFromYawCurveAtForce(linearYawForceAtValue);
+    debug[2] = servoValue;
+    debug[3] = tailServoMaxYawForce;
     return getServoValueAtAngle(servoConf, correctedAngle);
 }
 
@@ -498,7 +501,8 @@ static void tailTuneModeThrustTorque(struct thrustTorque_t *pTT, const bool isTh
         // Calibration has been requested, only start when throttle is up
         if (isThrottleHigh && ARMING_FLAG(ARMED))
         {
-            beeper(BEEPER_READY_BEEP);
+            beeper(BEEPER_BAT_LOW);
+            pTT->startBeepDelay_ms = 1000;
             pTT->timestamp_ms = millis();
             pTT->lastAdjTime_ms = millis();
             pTT->state = TT_WAIT;
@@ -513,13 +517,21 @@ static void tailTuneModeThrustTorque(struct thrustTorque_t *pTT, const bool isTh
             This is so that pilot has time to take off if the tail tune mode was activated on ground. */
             if (IsDelayElapsed_ms(pTT->timestamp_ms, 5000))
             {
+                // Longer beep when starting
+                beeper(BEEPER_BAT_CRIT_LOW);
                 pTT->state = TT_ACTIVE;
                 pTT->timestamp_ms = millis();
+            }
+            else if (IsDelayElapsed_ms(pTT->timestamp_ms, pTT->startBeepDelay_ms))
+            {
+                // Beep every second until start
+                beeper(BEEPER_BAT_LOW);
+                pTT->startBeepDelay_ms += 1000;
             }
         }
         else
         {
-            pTT->timestamp_ms = millis();
+            pTT->state = TT_IDLE;
         }
         break;
     case TT_ACTIVE:
