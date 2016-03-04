@@ -53,6 +53,7 @@
 
 //! Integrator is disabled when rate error exceeds this limit
 #define LUXFLOAT_INTEGRATOR_DISABLE_LIMIT_DPS (40.0f)
+#define REWRITE_INTEGRATOR_DISABLE_LIMIT_DPS (160)
 
 extern uint8_t motorCount;
 extern float dT;
@@ -217,7 +218,7 @@ static void pidLuxFloat(pidProfile_t *pidProfile, controlRateConfig_t *controlRa
         const float newIntegral = constrainf(errorGyroIf[axis] + RateError * dT * pidProfile->I_f[axis] * 10 * Iweigth[axis] / 100, -PID_LUX_FLOAT_MAX_I, PID_LUX_FLOAT_MAX_I);
         if (fabsf(RateError) < LUXFLOAT_INTEGRATOR_DISABLE_LIMIT_DPS)
         {
-            errorGyroIf[axis] = constrainf(errorGyroIf[axis] + RateError * dT * pidProfile->I_f[axis] * 10 * Iweigth[axis] / 100, -PID_LUX_FLOAT_MAX_I, PID_LUX_FLOAT_MAX_I);
+            errorGyroIf[axis] = newIntegral;
         }
         else
         {
@@ -505,19 +506,21 @@ static void pidMultiWiiRewrite(pidProfile_t *pidProfile, controlRateConfig_t *co
         // Precision is critical, as I prevents from long-time drift. Thus, 32 bits integrator is used.
         // Time correction (to avoid different I scaling for different builds based on average cycle time)
         // is normalized to cycle time = 2048.
-        errorGyroI[axis] = errorGyroI[axis] + ((RateError * (uint16_t)targetLooptime) >> 11) * pidProfile->I8[axis];
-
+        int32_t newIntegral = errorGyroI[axis] + ((RateError * (uint16_t)targetLooptime) >> 11) * pidProfile->I8[axis] * Iweigth[axis] / 100;
         // limit maximum integrator value to prevent WindUp - accumulating extreme values when system is saturated.
         // I coefficient (I8) moved before integration to make limiting independent from PID settings
-        errorGyroI[axis] = constrain(errorGyroI[axis], (int32_t) - GYRO_I_MAX << 13, (int32_t) + GYRO_I_MAX << 13);
+        newIntegral = constrain(newIntegral, (int32_t) - GYRO_I_MAX << 13, (int32_t) + GYRO_I_MAX << 13);
 
-        // Anti windup protection
-        if (IS_RC_MODE_ACTIVE(BOXAIRMODE)) {
-            errorGyroI[axis] = (int32_t) (errorGyroI[axis] * scaleItermToRcInput(axis));
-            if (STATE(ANTI_WINDUP) || motorLimitReached) {
-                errorGyroI[axis] = constrain(errorGyroI[axis], -errorGyroILimit[axis], errorGyroILimit[axis]);
-            } else {
-                errorGyroILimit[axis] = ABS(errorGyroI[axis]);
+        if (ABS(RateError) < REWRITE_INTEGRATOR_DISABLE_LIMIT_DPS)
+        {
+            errorGyroI[axis] = newIntegral;
+        }
+        else
+        {
+            // Shrink only
+            if (ABS(newIntegral) < ABS(errorGyroI[axis]))
+            {
+                errorGyroI[axis] = newIntegral;
             }
         }
 
