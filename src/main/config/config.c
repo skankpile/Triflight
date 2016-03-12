@@ -141,17 +141,17 @@ static const uint8_t EEPROM_CONF_VERSION = 112;
 
 void resetPidProfile(pidProfile_t *pidProfile)
 {
-    pidProfile->pidController = 2;
+    pidProfile->pidController = 1;
 
-    pidProfile->P8[ROLL] = 40;
+    pidProfile->P8[ROLL] = 49;
     pidProfile->I8[ROLL] = 30;
-    pidProfile->D8[ROLL] = 23;
-    pidProfile->P8[PITCH] = 40;
+    pidProfile->D8[ROLL] = 48;
+    pidProfile->P8[PITCH] = 43;
     pidProfile->I8[PITCH] = 30;
-    pidProfile->D8[PITCH] = 23;
+    pidProfile->D8[PITCH] = 26;
     pidProfile->P8[YAW] = 85;
-    pidProfile->I8[YAW] = 45;
-    pidProfile->D8[YAW] = 0;
+    pidProfile->I8[YAW] = 17;
+    pidProfile->D8[YAW] = 40;
     pidProfile->P8[PIDALT] = 50;
     pidProfile->I8[PIDALT] = 0;
     pidProfile->D8[PIDALT] = 0;
@@ -227,8 +227,8 @@ void resetBarometerConfig(barometerConfig_t *barometerConfig)
 
 void resetEscAndServoConfig(escAndServoConfig_t *escAndServoConfig)
 {
-    escAndServoConfig->minthrottle = 1150;
-    escAndServoConfig->maxthrottle = 1850;
+    escAndServoConfig->minthrottle = 1100;
+    escAndServoConfig->maxthrottle = 2000;
     escAndServoConfig->mincommand = 1000;
     escAndServoConfig->servoCenterPulse = 1500;
 }
@@ -293,6 +293,10 @@ static void resetControlRateConfig(controlRateConfig_t *controlRateConfig) {
     controlRateConfig->rcYawExpo8 = 83;
     controlRateConfig->tpa_breakpoint = 1500;
     controlRateConfig->tpa_yaw_breakpoint = 1500;
+
+    controlRateConfig->rates[FD_PITCH] = 55;
+    controlRateConfig->rates[FD_ROLL] = 55;
+    controlRateConfig->rates[FD_YAW] = 55;
 }
 
 void resetRcControlsConfig(rcControlsConfig_t *rcControlsConfig) {
@@ -378,6 +382,7 @@ STATIC_UNIT_TESTED void resetConf(void)
 #endif
 
     featureSet(FEATURE_FAILSAFE);
+    featureSet(FEATURE_ONESHOT125);
 
     // global settings
     masterConfig.dcm_kp = 2500;                // 1.0 * 10000
