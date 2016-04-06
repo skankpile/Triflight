@@ -86,4 +86,5 @@ extern int32_t axisPID_P[3], axisPID_I[3], axisPID_D[3];
 void pidSetController(pidControllerType_e type);
 void pidResetErrorAngle(void);
 void pidResetErrorGyro(void);
-
+void pidResetErrorGyroAxis(flight_dynamics_index_t axis);
+void pidSetExpectedGyroError(flight_dynamics_index_t axis, int16_t error);

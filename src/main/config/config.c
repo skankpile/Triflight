@@ -137,7 +137,7 @@ static uint32_t activeFeaturesLatch = 0;
 static uint8_t currentControlRateProfileIndex = 0;
 controlRateConfig_t *currentControlRateProfile;
 
-static const uint8_t EEPROM_CONF_VERSION = 112;
+static const uint8_t EEPROM_CONF_VERSION = 113;
 
 void resetPidProfile(pidProfile_t *pidProfile)
 {
@@ -300,10 +300,10 @@ static void resetControlRateConfig(controlRateConfig_t *controlRateConfig) {
     controlRateConfig->rcExpo8 = 85;
     controlRateConfig->thrMid8 = 50;
     controlRateConfig->dynThrPID = 0;
-    controlRateConfig->tpa_yaw_rate = 90;
     controlRateConfig->rcYawExpo8 = 83;
     controlRateConfig->tpa_breakpoint = 1500;
-    controlRateConfig->tpa_yaw_breakpoint = 1500;
+    controlRateConfig->tri_dynamic_yaw_minthrottle = 300; // 3x YAW gain at min throttle
+    controlRateConfig->tri_dynamic_yaw_maxthrottle = 100; // no reduction by default
 
     controlRateConfig->rates[FD_PITCH] = 55;
     controlRateConfig->rates[FD_ROLL] = 55;
@@ -335,8 +335,10 @@ static void resetMixerConfig(mixerConfig_t *mixerConfig) {
     mixerConfig->tri_servo_feedback = TRI_SERVO_FB_RSSI;
 #else
     mixerConfig->tri_servo_feedback = TRI_SERVO_FB_VIRTUAL;
-#endif
-#endif
+#endif //RCE
+    mixerConfig->tri_motor_acc_yaw_correction = 6;
+    mixerConfig->tri_motor_acceleration = 0.20f;
+#endif //USE_SERVOS
 }
 
 uint8_t getCurrentProfile(void)
@@ -367,6 +369,11 @@ static void setControlRateProfile(uint8_t profileIndex)
 uint16_t getCurrentMinthrottle(void)
 {
     return masterConfig.escAndServoConfig.minthrottle;
+}
+
+uint16_t getCurrentMaxthrottle(void)
+{
+    return masterConfig.escAndServoConfig.maxthrottle;
 }
 
 // Default settings

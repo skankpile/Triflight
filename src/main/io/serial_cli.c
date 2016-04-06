@@ -608,6 +608,8 @@ const clivalue_t valueTable[] = {
     { "tri_tail_motor_thrustfactor",VAR_INT16  | MASTER_VALUE, &masterConfig.mixerConfig.tri_tail_motor_thrustfactor, .config.minmax = { TAIL_THRUST_FACTOR_MIN, TAIL_THRUST_FACTOR_MAX } },
     { "tri_tail_servo_speed",       VAR_INT16  | MASTER_VALUE, &masterConfig.mixerConfig.tri_tail_servo_speed, .config.minmax = { 0, 1000 } },
     { "tri_servo_feedback",         VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, &masterConfig.mixerConfig.tri_servo_feedback, .config.lookup = { TABLE_SERVO_FEEDBACK } },
+    { "tri_motor_acc_yaw_correction",VAR_UINT16| MASTER_VALUE, &masterConfig.mixerConfig.tri_motor_acc_yaw_correction, .config.minmax = { 0, TRI_MOTOR_ACC_CORRECTION_MAX } },
+    { "tri_motor_acceleration",     VAR_FLOAT  | MASTER_VALUE, &masterConfig.mixerConfig.tri_motor_acceleration, .config.minmax = { 0.01f, 1.0f } },
 #endif
 
     { "default_rate_profile",       VAR_UINT8  | PROFILE_VALUE , &masterConfig.profile[0].defaultRateProfileIndex, .config.minmax = { 0,  MAX_CONTROL_RATE_PROFILE_COUNT - 1 } },
@@ -621,8 +623,8 @@ const clivalue_t valueTable[] = {
     { "yaw_rate",                   VAR_UINT8  | CONTROL_RATE_VALUE, &masterConfig.controlRateProfiles[0].rates[FD_YAW], .config.minmax = { 0,  CONTROL_RATE_CONFIG_YAW_RATE_MAX } },
     { "tpa_rate",                   VAR_UINT8  | CONTROL_RATE_VALUE, &masterConfig.controlRateProfiles[0].dynThrPID, .config.minmax = { 0,  CONTROL_RATE_CONFIG_TPA_MAX} },
     { "tpa_breakpoint",             VAR_UINT16 | CONTROL_RATE_VALUE, &masterConfig.controlRateProfiles[0].tpa_breakpoint, .config.minmax = { PWM_RANGE_MIN,  PWM_RANGE_MAX} },
-    { "tpa_yaw_rate",               VAR_UINT8  | CONTROL_RATE_VALUE, &masterConfig.controlRateProfiles[0].tpa_yaw_rate, .config.minmax = { 0, CONTROL_RATE_CONFIG_YAW_TPA_MAX} },
-    { "tpa_yaw_breakpoint",         VAR_UINT16 | CONTROL_RATE_VALUE, &masterConfig.controlRateProfiles[0].tpa_yaw_breakpoint, .config.minmax = { PWM_RANGE_MIN, PWM_RANGE_MAX} },
+    { "tri_dynamic_yaw_minthrottle",VAR_UINT16 | CONTROL_RATE_VALUE, &masterConfig.controlRateProfiles[0].tri_dynamic_yaw_minthrottle, .config.minmax = { 0, 500} },
+    { "tri_dynamic_yaw_maxthrottle",VAR_UINT16 | CONTROL_RATE_VALUE, &masterConfig.controlRateProfiles[0].tri_dynamic_yaw_maxthrottle, .config.minmax = { 0, 100} },
 
     { "failsafe_delay",             VAR_UINT8  | MASTER_VALUE,  &masterConfig.failsafeConfig.failsafe_delay, .config.minmax = { 0,  200 } },
     { "failsafe_off_delay",         VAR_UINT8  | MASTER_VALUE,  &masterConfig.failsafeConfig.failsafe_off_delay, .config.minmax = { 0,  200 } },

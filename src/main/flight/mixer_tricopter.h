@@ -24,6 +24,8 @@
 #define TAIL_THRUST_FACTOR_MIN_FLOAT  (TAIL_THRUST_FACTOR_MIN / 10.0f)
 #define TAIL_THRUST_FACTOR_MAX_FLOAT  (TAIL_THRUST_FACTOR_MAX / 10.0f)
 
+#define TRI_MOTOR_ACC_CORRECTION_MAX  (200)
+
 /** @brief Servo feedback sources. */
 typedef enum {
     TRI_SERVO_FB_VIRTUAL = 0,  ///< Virtual servo, no physical feedback signal from servo
@@ -52,9 +54,10 @@ uint16_t triGetCurrentServoAngle();
 
 /** @brief Perform tricopter mixer actions.
  *
+ *  @param PIDoutput output from PID controller, in scale of [-1000, 1000].
  *  @return Void.
  */
-void triServoMixer();
+void triServoMixer(int16_t PIDoutput);
 
 /** @brief Get amount of motor correction that must be applied
  * for given motor.

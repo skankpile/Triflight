@@ -51,9 +51,11 @@
 #include "config/runtime_config.h"
 #include "config/config_unittest.h"
 
+#include "debug.h"
+
 //! Integrator is disabled when rate error exceeds this limit
-#define LUXFLOAT_INTEGRATOR_DISABLE_LIMIT_DPS (40.0f)
-#define REWRITE_INTEGRATOR_DISABLE_LIMIT_DPS (160)
+#define LUXFLOAT_INTEGRATOR_DISABLE_LIMIT_DPS (50.0f)
+#define REWRITE_INTEGRATOR_DISABLE_LIMIT_DPS (50 * 41 / 10)
 
 extern uint8_t motorCount;
 extern float dT;
@@ -71,6 +73,8 @@ static int32_t errorGyroI[3], errorGyroILimit[3];
 static float errorGyroIf[3];
 static int32_t errorAngleI[2];
 static float errorAngleIf[2];
+
+static int16_t expectedGyroError[3] = {0};
 
 static void pidMultiWiiRewrite(pidProfile_t *pidProfile, controlRateConfig_t *controlRateConfig,
         uint16_t max_angle_inclination, rollAndPitchTrims_t *angleTrim, rxConfig_t *rxConfig);
@@ -96,6 +100,17 @@ void pidResetErrorGyro(void)
         errorGyroI[axis] = 0;
         errorGyroIf[axis] = 0.0f;
     }
+}
+
+void pidResetErrorGyroAxis(flight_dynamics_index_t axis)
+{
+    errorGyroI[axis] = 0;
+    errorGyroIf[axis] = 0.0f;
+}
+
+void pidSetExpectedGyroError(flight_dynamics_index_t axis, int16_t error)
+{
+    expectedGyroError[axis] = error;
 }
 
 float scaleItermToRcInput(int axis) {
@@ -209,14 +224,14 @@ static void pidLuxFloat(pidProfile_t *pidProfile, controlRateConfig_t *controlRa
         // Used in stand-alone mode for ACRO, controlled by higher level regulators in other modes
         // -----calculate scaled error.AngleRates
         // multiplication of rcCommand corresponds to changing the sticks scaling here
-        RateError = AngleRate - gyroRate;
+        RateError = AngleRate - gyroRate + (float)expectedGyroError[axis];
 
         // -----calculate P component
 
         PTerm = RateError * pidProfile->P_f[axis] * PIDweight[axis] / 100;
 
         const float newIntegral = constrainf(errorGyroIf[axis] + RateError * dT * pidProfile->I_f[axis] * 10 * Iweigth[axis] / 100, -PID_LUX_FLOAT_MAX_I, PID_LUX_FLOAT_MAX_I);
-        if (fabsf(RateError) < LUXFLOAT_INTEGRATOR_DISABLE_LIMIT_DPS)
+        if (fabsf(gyroRate) < LUXFLOAT_INTEGRATOR_DISABLE_LIMIT_DPS)
         {
             errorGyroIf[axis] = newIntegral;
         }
@@ -496,7 +511,7 @@ static void pidMultiWiiRewrite(pidProfile_t *pidProfile, controlRateConfig_t *co
         // -----calculate scaled error.AngleRates
         // multiplication of rcCommand corresponds to changing the sticks scaling here
         gyroRate = gyroADC[axis] / 4;
-        RateError = AngleRateTmp - gyroRate;
+        RateError = AngleRateTmp - gyroRate + (expectedGyroError[axis] * 41);
 
         // -----calculate P component
         PTerm = (RateError * pidProfile->P8[axis] * PIDweight[axis] / 100) >> 7;
@@ -511,7 +526,7 @@ static void pidMultiWiiRewrite(pidProfile_t *pidProfile, controlRateConfig_t *co
         // I coefficient (I8) moved before integration to make limiting independent from PID settings
         newIntegral = constrain(newIntegral, (int32_t) - GYRO_I_MAX << 13, (int32_t) + GYRO_I_MAX << 13);
 
-        if (ABS(RateError) < REWRITE_INTEGRATOR_DISABLE_LIMIT_DPS)
+        if (ABS(gyroRate) < REWRITE_INTEGRATOR_DISABLE_LIMIT_DPS)
         {
             errorGyroI[axis] = newIntegral;
         }

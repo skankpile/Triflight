@@ -74,6 +74,7 @@
 #include "flight/failsafe.h"
 #include "flight/imu.h"
 #include "flight/navigation.h"
+#include "flight/pid.h"
 
 #include "config/runtime_config.h"
 #include "config/config.h"
@@ -82,10 +83,16 @@
 
 #include "mw.h"
 
+
 #ifdef USE_SERVOS
-#define TRI_TAIL_SERVO_ANGLE_MID (900)
-#define TRI_YAW_FORCE_CURVE_SIZE (100)
-#define TRI_TAIL_SERVO_MAX_ANGLE (500)
+#define USE_AUX_CHANNEL_TUNING      (0)
+#define TRI_TAIL_SERVO_ANGLE_MID    (900)
+#define TRI_YAW_FORCE_CURVE_SIZE    (100)
+#define TRI_TAIL_SERVO_MAX_ANGLE    (500)
+
+#define TRI_TAIL_MOTOR_INDEX        (0)
+
+#define TRI_YAW_FORCE_PRECISION     (1000)
 
 #define IsDelayElapsed_us(timestamp_us, delay_us) ((uint32_t)(micros() - timestamp_us) >= delay_us)
 #define IsDelayElapsed_ms(timestamp_ms, delay_ms) ((uint32_t)(millis() - timestamp_ms) >= delay_ms)
@@ -109,13 +116,21 @@ static int16_t tailMotorDecelerationDelay_ms = 100;
 static int16_t tailMotorAccelerationDelay_angle;
 static int16_t tailMotorDecelerationDelay_angle;
 
+//! Virtual tail motor speed feedback
+static float tailMotorVirtual = 1000.0f;
+//! Configured output throttle range (max - min)
+static int16_t throttleRange = 0;
+//! Motor acceleration in output units (us) / second
+static float motorAcceleration = 0;
+//! Reset the I term when tail motor deceleration has lasted (ms)
+static uint16_t resetITermDecelerationLasted_ms = 0;
+
 static servoParam_t * gpTailServoConf;
 static int16_t *gpTailServo;
 static mixerConfig_t *gpMixerConfig;
 
 static uint16_t tailServoADC = 0;
 static AdcChannel tailServoADCChannel = ADC_EXTERNAL1;
-
 static void initCurves();
 static uint16_t getServoValueAtAngle(servoParam_t * servoConf, uint16_t angle);
 static float getPitchCorrectionAtTailAngle(float angle, float thrustFactor);
@@ -126,7 +141,7 @@ static uint16_t getPitchCorrectionMaxPhaseShift(int16_t servoAngle,
         int16_t motorAccelerationDelayAngle,
         int16_t motorDecelerationDelayAngle,
         int16_t motorDirectionChangeAngle);
-static uint16_t getLinearServoValue(servoParam_t *servoConf, uint16_t servoValue);
+static uint16_t getLinearServoValue(servoParam_t *servoConf, int16_t constrainedPIDOutput);
 static uint16_t virtualServoStep(uint16_t currentAngle, int16_t servoSpeed, float dT, servoParam_t *servoConf, uint16_t servoValue);
 static uint16_t feedbackServoStep(mixerConfig_t *mixerConf, uint16_t tailServoADC);
 STATIC_UNIT_TESTED void tailTuneModeThrustTorque(thrustTorque_t *pTT, const bool isThrottleHigh);
@@ -134,6 +149,12 @@ static void tailTuneModeServoSetup(struct servoSetup_t *pSS, servoParam_t *pServ
 static void triTailTuneStep(servoParam_t *pServoConf, int16_t *pServoVal);
 static void updateServoAngle(void);
 static void updateServoFeedbackADCChannel(uint8_t tri_servo_feedback);
+static void checkMotorAcceleration(void);
+#if USE_AUX_CHANNEL_TUNING
+static int16_t scaleAUXChannel(u8 channel, int16_t scale);
+#endif
+static int16_t dynamicYaw(int16_t PIDoutput);
+static void tailMotorStep(int16_t setpoint, float dT);
 #endif
 
 void triInitMixer(servoParam_t *pTailServoConfig,
@@ -146,6 +167,12 @@ void triInitMixer(servoParam_t *pTailServoConfig,
     tailServoMaxAngle = pMixerConfig->tri_servo_angle_at_max;
     tailServoSpeed = pMixerConfig->tri_tail_servo_speed;
     gpMixerConfig = pMixerConfig;
+
+    throttleRange = getCurrentMaxthrottle() - getCurrentMinthrottle();
+    motorAcceleration = (float)throttleRange / gpMixerConfig->tri_motor_acceleration;
+
+    // Reset the I term when motor deceleration has lasted 35% of the min to max time
+    resetITermDecelerationLasted_ms = gpMixerConfig->tri_motor_acceleration * 1000.0f * 0.35f;
 
     initCurves();
     updateServoFeedbackADCChannel(gpMixerConfig->tri_servo_feedback);
@@ -169,7 +196,7 @@ static void initCurves()
     for (int32_t i = 0; i < TRI_YAW_FORCE_CURVE_SIZE; i++)
     {
         const float angleRad = DEGREES_TO_RADIANS(angle / 10.0f);
-        yawForceCurve[i] = 1000.0f * (-tailServoThrustFactor * cosf(angleRad) - sinf(angleRad)) * getPitchCorrectionAtTailAngle(angleRad, tailServoThrustFactor);
+        yawForceCurve[i] = TRI_YAW_FORCE_PRECISION * (-tailServoThrustFactor * cosf(angleRad) - sinf(angleRad)) * getPitchCorrectionAtTailAngle(angleRad, tailServoThrustFactor);
         // Only calculate the top forces in the configured angle range
         if ((angle >= minAngle) && (angle <= maxAngle))
         {
@@ -187,20 +214,20 @@ uint16_t triGetCurrentServoAngle()
     return tailServoAngle;
 }
 
-static uint16_t getLinearServoValue(servoParam_t *servoConf, uint16_t servoValue)
+static uint16_t getLinearServoValue(servoParam_t *servoConf, int16_t constrainedPIDOutput)
 {
-    const int16_t servoMid = servoConf->middle;
-    // First find the yaw force at given servo value from a linear curve
-    const int16_t servoRange = (servoValue < servoMid) ? servoMid - servoConf->min : servoConf->max - servoMid;
-    const int32_t linearYawForceAtValue = (int32_t)(tailServoMaxYawForce) * (servoValue - servoMid) / servoRange;
+    const int32_t linearYawForceAtValue = tailServoMaxYawForce * constrainedPIDOutput / TRI_YAW_FORCE_PRECISION;
     const int16_t correctedAngle = getAngleFromYawCurveAtForce(linearYawForceAtValue);
-    debug[2] = servoValue;
-    debug[3] = tailServoMaxYawForce;
     return getServoValueAtAngle(servoConf, correctedAngle);
 }
 
-void triServoMixer()
+void triServoMixer(int16_t PIDoutput)
 {
+    // Dynamic yaw expects input [-1000, 1000]
+    PIDoutput = constrain(PIDoutput, -1000, 1000);
+    // Scale the PID output based on tail motor speed (thrust)
+    PIDoutput = dynamicYaw(PIDoutput);
+
     static filterStatePt1_t feedbackFilter;
     if (gpMixerConfig->tri_servo_feedback != TRI_SERVO_FB_VIRTUAL)
     {
@@ -211,18 +238,24 @@ void triServoMixer()
     // Linear servo logic only in armed state
     if (ARMING_FLAG(ARMED))
     {
-        *gpTailServo = getLinearServoValue(gpTailServoConf, *gpTailServo);
+        *gpTailServo = getLinearServoValue(gpTailServoConf, PIDoutput);
     }
 
     triTailTuneStep(gpTailServoConf, gpTailServo);
 
     updateServoAngle();
+
+    // Update the tail motor virtual feedback
+    tailMotorStep(motor[TRI_TAIL_MOTOR_INDEX], dT);
+
+    // Check the tail motor acceleration
+    checkMotorAcceleration();
 }
 
 int16_t triGetMotorCorrection(uint8_t motorIndex)
 {
     uint16_t correction = 0;
-    if (motorIndex == 0)
+    if (motorIndex == TRI_TAIL_MOTOR_INDEX)
     {
         // Adjust tail motor speed based on servo angle. Check how much to adjust speed from pitch force curve based on servo angle.
         // Take motor speed up lag into account by shifting the phase of the curve
@@ -239,7 +272,15 @@ int16_t triGetMotorCorrection(uint8_t motorIndex)
         }
 
         const int16_t futureServoAngle = constrain(servoAngle + angleDiff, TRI_TAIL_SERVO_ANGLE_MID - tailServoMaxAngle, TRI_TAIL_SERVO_ANGLE_MID + tailServoMaxAngle);
-        const uint16_t throttleMotorOutput = rcCommand[THROTTLE] - getCurrentMinthrottle();
+        uint16_t throttleMotorOutput = tailMotorVirtual - getCurrentMinthrottle();
+        /* Increased yaw authority at min throttle, always calculate the pitch
+         * correction on at least half motor output. This produces a little bit
+         * more forward pitch, but tested to be negligible.
+         *
+         * TODO: this is not the best way to achieve this, but how could the min_throttle
+         * pitch correction be calculated, as the thrust is zero?
+         */
+        throttleMotorOutput = constrain(throttleMotorOutput, throttleRange / 2, 1000);
         correction = (throttleMotorOutput * getPitchCorrectionAtTailAngle(DEGREES_TO_RADIANS(futureServoAngle / 10.0f), tailServoThrustFactor)) - throttleMotorOutput;
     }
 
@@ -767,3 +808,120 @@ static void updateServoFeedbackADCChannel(uint8_t tri_servo_feedback)
         break;
     }
 }
+
+#if USE_AUX_CHANNEL_TUNING
+static int16_t scaleAUXChannel(u8 channel, int16_t scale)
+{
+    int16_t constrained = constrain(rcData[channel], 1000, 2000);
+    constrained -= 1000;
+
+    return constrained * scale / 1000;
+}
+#endif
+
+static void checkMotorAcceleration(void)
+{
+    static float previousMotorSpeed = 1000.0f;
+    static uint32_t accelerationStartedAt_ms = 0;
+    static bool accelerating = false;
+
+    float tailMotorSpeed = tailMotorVirtual;
+    // Calculate how much the motor speed changed since last time
+    float acceleration = (tailMotorSpeed - previousMotorSpeed);
+    previousMotorSpeed = tailMotorSpeed;
+
+    // Check if acceleration has changed to deceleration and vice versa
+    if (acceleration > 0.0f)
+    {
+        if (!accelerating)
+        {
+            // Take a timestamp when direction changes
+            accelerationStartedAt_ms = millis();
+            accelerating = true;
+        }
+    }
+    else
+    {
+        if (accelerating)
+        {
+            accelerationStartedAt_ms = millis();
+            accelerating = false;
+        }
+    }
+
+    /* Reset the I term in a dynamic situation where the motor is causing yaw error for longer period of time.
+     * This helps especially when throttle is cut, the copter is quickly losing yaw authority and we can't
+     * have the slow integrator resisting the correction.
+     *
+     * Tests have shown that this is mostly needed when throttle is cut (motor decelerating), so only
+     * reset I term in that case.
+     */
+    if (!accelerating && IsDelayElapsed_ms(accelerationStartedAt_ms, resetITermDecelerationLasted_ms))
+    {
+        pidResetErrorGyroAxis(FD_YAW);
+    }
+
+    // Set the expected axis error based on tail motor acceleration and configured gain
+    pidSetExpectedGyroError(FD_YAW, acceleration * gpMixerConfig->tri_motor_acc_yaw_correction / 10);
+}
+
+static int16_t dynamicYaw(int16_t PIDoutput)
+{
+    const int16_t halfRange = throttleRange / 2;
+    const int16_t midpoint = getCurrentMinthrottle() + halfRange;
+
+    uint16_t gain;
+    // Select the yaw gain based on tail motor speed
+    if (tailMotorVirtual < midpoint)
+    {
+        /* Below midpoint, gain is increasing the output.
+         * e.g. 150 (%) increases the yaw output at min throttle by 150 % (1.5x)
+         * e.g. 250 (%) increases the yaw output at min throttle by 250 % (2.5x)
+         */
+        gain = currentControlRateProfile->tri_dynamic_yaw_minthrottle - 100;
+    }
+    else
+    {
+        /* Above midpoint, gain is decreasing the output.
+         * e.g. 75 (%) reduces the yaw output at max throttle by 25 % (0.75x)
+         * e.g. 20 (%) reduces the yaw output at max throttle by 80 % (0.2x)
+         */
+        gain = 100 - currentControlRateProfile->tri_dynamic_yaw_maxthrottle;
+    }
+
+    const int16_t distanceFromMid = (tailMotorVirtual - midpoint);
+    const int16_t scaledPIDoutput = (PIDoutput - distanceFromMid * gain * PIDoutput / (halfRange * 100));
+    return constrain(scaledPIDoutput, -1000, 1000);
+}
+
+static void tailMotorStep(int16_t setpoint, float dT)
+{
+    static float current = 1000;
+    float dS; // Max change of an speed since last check
+
+    dS = dT * motorAcceleration;
+
+    if ( ABS(current - setpoint) < dS )
+    {
+        // At set-point after this moment
+        current = setpoint;
+    }
+    else if (current < setpoint)
+    {
+        current += dS;
+    }
+    else
+    {
+        current -= dS;
+    }
+
+    // Use a PT1 low-pass filter to add "slowness" to the virtual motor feedback.
+    /* Cut-off to delay:
+     * 2  Hz -> 25 ms
+     * 5  Hz -> 14 ms
+     * 10 Hz -> 9  ms
+     */
+    static filterStatePt1_t motorFilter;
+    tailMotorVirtual = filterApplyPt1(current, &motorFilter, 20, dT);
+}
+
