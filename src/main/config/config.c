@@ -442,7 +442,7 @@ STATIC_UNIT_TESTED void resetConf(void)
 
     resetSerialConfig(&masterConfig.serialConfig);
 
-    masterConfig.looptime = 2000;
+    masterConfig.looptime = 1000;
     masterConfig.i2c_highspeed = 1;
     masterConfig.gyroSync = 1;
     masterConfig.gyroSyncDenominator = 1;
