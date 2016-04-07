@@ -127,6 +127,18 @@ const sonarHardware_t *sonarGetHardwareConfiguration(batteryConfig_t *batteryCon
         .exti_irqn = EXTI1_IRQn
     };
     return &sonarHardware;
+#elif defined(RCE)
+    UNUSED(batteryConfig);
+    static const sonarHardware_t const sonarHardware = {
+        .trigger_pin = Pin_6,   // PWM5 (PA5) - only 3.3v ( add a 1K Ohms resistor )
+        .trigger_gpio = GPIOA,
+        .echo_pin = Pin_1,      // PWM6 (PB1) - only 3.3v ( add a 1K Ohms resistor )
+        .echo_gpio = GPIOB,
+        .exti_line = EXTI_Line1,
+        .exti_pin_source = EXTI_PinSource1,
+        .exti_irqn = EXTI1_IRQn
+    };
+    return &sonarHardware;
 #elif defined(UNIT_TEST)
     UNUSED(batteryConfig);
     return 0;

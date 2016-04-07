@@ -249,7 +249,11 @@ static void resetBatteryConfig(batteryConfig_t *batteryConfig)
     batteryConfig->vbatmaxcellvoltage = 43;
     batteryConfig->vbatmincellvoltage = 33;
     batteryConfig->vbatwarningcellvoltage = 35;
+#if defined(RCE)
+    batteryConfig->currentMeterScale = 360; // for the built-in current sensor on RCExplorer board
+#else
     batteryConfig->currentMeterScale = 400; // for Allegro ACS758LCB-100U (40mV/A)
+#endif
     batteryConfig->currentMeterType = CURRENT_SENSOR_ADC;
 }
 
@@ -279,6 +283,13 @@ void resetSerialConfig(serialConfig_t *serialConfig)
 #if defined(USE_VCP)
     // This allows MSP connection via USART & VCP so the board can be reconfigured.
     serialConfig->portConfigs[1].functionMask = FUNCTION_MSP;
+#endif
+#if defined(RCE)
+    // On RCExplorer board, UART1 is serial RX by default
+    serialConfig->portConfigs[1].functionMask = FUNCTION_RX_SERIAL;
+    // UART2 and UART3 as MSP for safety
+    serialConfig->portConfigs[2].functionMask = FUNCTION_MSP;
+    serialConfig->portConfigs[3].functionMask = FUNCTION_MSP;
 #endif
 
     serialConfig->reboot_character = 'R';
@@ -320,7 +331,11 @@ static void resetMixerConfig(mixerConfig_t *mixerConfig) {
     mixerConfig->tri_servo_min_adc = 0;
     mixerConfig->tri_servo_mid_adc = 0;
     mixerConfig->tri_servo_max_adc = 0;
+#if defined(RCE)
+    mixerConfig->tri_servo_feedback = TRI_SERVO_FB_RSSI;
+#else
     mixerConfig->tri_servo_feedback = TRI_SERVO_FB_VIRTUAL;
+#endif
 #endif
 }
 
@@ -367,7 +382,7 @@ STATIC_UNIT_TESTED void resetConf(void)
     masterConfig.version = EEPROM_CONF_VERSION;
     masterConfig.mixerMode = MIXER_TRI;
     featureClearAll();
-#if defined(CJMCU) || defined(SPARKY) || defined(COLIBRI_RACE) || defined(MOTOLAB) || defined(SPRACINGF3MINI) || defined(LUX_RACE)
+#if defined(CJMCU) || defined(SPARKY) || defined(COLIBRI_RACE) || defined(MOTOLAB) || defined(SPRACINGF3MINI) || defined(LUX_RACE) || defined(RCE)
     featureSet(FEATURE_RX_PPM);
 #endif
 
