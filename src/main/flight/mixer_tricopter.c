@@ -593,7 +593,7 @@ static void tailTuneModeThrustTorque(struct thrustTorque_t *pTT, const bool isTh
                 }
             }
 
-            if (done && minFactor > 1.1)
+            if (done && minFactor > TAIL_THRUST_FACTOR_MIN_FLOAT + 0.01f)
             {
                 gpMixerConfig->tri_tail_motor_thrustfactor = minFactor * 10.0f;
 
