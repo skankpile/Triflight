@@ -151,7 +151,7 @@ The values are now automatically saved, **do not** use stick command.
 Deactivate tail tune a few seconds **after** landing and disarming copter!
 
 Use the configurator CLI and check *tri_tail_motor_thrustfactor*.
-If it's still 138 (default) it's likely the tuning failed.
+If it's still 138 (default) or if it's 10 it's likely the tuning failed.
 
 ## PID Settings
 
@@ -166,10 +166,13 @@ set rc_expo = 50
 set roll_rate = 30
 set pitch_rate = 30
 set yaw_rate = 35
-set max_angle_inclination = 550
+set max_angle_inclination = 300
 save
 ```
-This max_angle_inclination setting is only for very calms days. When you are more comfortable you change the values gradually to the stock settings.
+With this max_angle_inclination setting it will still move fast.
+On very calms days maybe you can reduce it more.
+
+When you are more comfortable you change the values gradually to the stock settings.
 
 **Do not** paste full CLI setups from any other firmware or Triflight release.
 
