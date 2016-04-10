@@ -456,7 +456,7 @@ void init(void)
     adc_params.enableCurrentMeter = feature(FEATURE_CURRENT_METER);
     adc_params.enableExternal1 = false;
 #ifdef USE_SERVOS
-    if (masterConfig.mixerMode == MIXER_TRI)
+    if (masterConfig.mixerMode == MIXER_TRI || masterConfig.mixerMode == MIXER_CUSTOM_TRI)
     {
         switch (masterConfig.mixerConfig.tri_servo_feedback)
         {
