@@ -404,7 +404,7 @@ void mixerInit(mixerMode_e mixerMode, motorMixer_t *initialCustomMotorMixers, se
         servo[i] = DEFAULT_SERVO_MIDDLE;
     }
 #ifdef USE_SERVOS
-    if (currentMixerMode == MIXER_TRI)
+    if (currentMixerMode == MIXER_TRI  || currentMixerMode == MIXER_CUSTOM_TRI)
     {
         triInitMixer(&servoConf[SERVO_RUDDER], &servo[SERVO_RUDDER], mixerConfig);
     }
@@ -762,7 +762,7 @@ STATIC_UNIT_TESTED void servoMixer(void)
 
     }
 
-    if (currentMixerMode == MIXER_TRI)
+    if (currentMixerMode == MIXER_TRI || currentMixerMode == MIXER_CUSTOM_TRI)
     {
         triServoMixer();
     }
