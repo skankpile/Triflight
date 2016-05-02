@@ -126,10 +126,6 @@ TEST(ConfigUnittest, TestResetConfigZeroValues)
 // resetControlRateConfig(&masterConfig.controlRateProfiles[0]);
     EXPECT_EQ(0, masterConfig.controlRateProfiles[0].thrExpo8);
     EXPECT_EQ(0, masterConfig.controlRateProfiles[0].dynThrPID);
-    EXPECT_EQ(0, masterConfig.controlRateProfiles[0].rcYawExpo8);
-    for (uint8_t axis = 0; axis < FLIGHT_DYNAMICS_INDEX_COUNT; axis++) {
-        EXPECT_EQ(0, masterConfig.controlRateProfiles[0].rates[axis]);
-    }
 
     EXPECT_EQ(0, masterConfig.failsafeConfig.failsafe_kill_switch); // default failsafe switch action is identical to rc link loss
     EXPECT_EQ(0, masterConfig.failsafeConfig.failsafe_procedure);   // default full failsafe procedure is 0: auto-landing
