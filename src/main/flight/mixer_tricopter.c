@@ -415,7 +415,7 @@ static uint16_t getPitchCorrectionMaxPhaseShift(int16_t servoAngle,
 
 static uint16_t virtualServoStep(uint16_t currentAngle, int16_t servoSpeed, float dT, servoParam_t *servoConf, uint16_t servoValue)
 {
-    const uint16_t angleSetPoint = getServoAngle(servoConf, servoValue) / 10.0f;
+    const uint16_t angleSetPoint = getServoAngle(servoConf, servoValue);
     const uint16_t dA = dT * servoSpeed * 10; // Max change of an angle since last check
 
     if ( ABS(currentAngle - angleSetPoint) < dA )
