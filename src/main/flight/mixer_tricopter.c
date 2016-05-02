@@ -692,6 +692,9 @@ static void tailTuneModeServoSetup(struct servoSetup_t *pSS, servoParam_t *pServ
                 pSS->state = SS_IDLE;
                 pSS->cal.subState = SS_C_IDLE;
                 beeper(BEEPER_READY_BEEP);
+
+                // Speed calibration should be done as final step so this saves the min, mid, max and speed values.
+                saveConfigAndNotify();
             }
             else
             {
@@ -713,6 +716,11 @@ static void tailTuneModeServoSetup(struct servoSetup_t *pSS, servoParam_t *pServ
                             pSS->state = SS_IDLE;
                             pSS->cal.subState = SS_C_IDLE;
                             beeper(BEEPER_ACC_CALIBRATION_FAIL);
+
+                            /* Save configuration even after speed calibration failed.
+                             * Speed calibration should be done as final step so this saves the min, mid and max values.
+                             */
+                            saveConfigAndNotify();
                         }
                         else
                         {
