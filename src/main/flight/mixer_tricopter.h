@@ -74,6 +74,9 @@ int16_t triGetMotorCorrection(uint8_t motorIndex);
 _Bool triEnableServoUnarmed(void);
 
 #ifdef USE_SERVOS
+//TODO: Do we need the line above? Are there any tricopters without servos?
+#ifdef MIXER_TRICOPTER_INTERNALS
+
 typedef enum {
     TT_IDLE = 0,
     TT_WAIT,
@@ -107,14 +110,12 @@ typedef enum {
     TT_MODE_SERVO_SETUP,
 } tailtuneMode_e;
 
-typedef struct servoAvgAngle_s
-{
+typedef struct servoAvgAngle_s {
     uint32_t sum;
     uint16_t numOf;
 } servoAvgAngle_t;
 
-typedef struct thrustTorque_s
-{
+typedef struct thrustTorque_s {
     tailTuneState_e state;
     uint32_t startBeepDelay_ms;
     uint32_t timestamp_ms;
@@ -125,30 +126,26 @@ typedef struct thrustTorque_s
 typedef struct tailTune_s {
     tailtuneMode_e mode;
     thrustTorque_t tt;
-    struct servoSetup_t
-    {
+    struct servoSetup_t {
         servoSetupState_e state;
         float servoVal;
         int16_t *pLimitToAdjust;
-        struct servoCalib_t
-        {
+        struct servoCalib_t {
             _Bool done;
             _Bool waitingServoToStop;
             servoSetupCalibState_e state;
             servoSetupCalibSubState_e subState;
             uint32_t timestamp_ms;
-            struct average_t
-            {
+            struct average_t {
                 uint16_t *pCalibConfig;
                 uint32_t sum;
                 uint16_t numOf;
             } avg;
-        }cal;
-    }ss;
+        } cal;
+    } ss;
 } tailTune_t;
 
-void tailTuneModeThrustTorque(thrustTorque_t *pTT, const bool isThrottleHigh);
-
+#endif /* MIXER_TRICOPTER_INTERNALS */
 #endif /* USE_SERVOS */
 
 #endif /* SRC_MAIN_FLIGHT_MIXER_TRICOPTER_H_ */

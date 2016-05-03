@@ -20,6 +20,7 @@
 #include <math.h>
 #include <float.h>
 #include "platform.h"
+#include "build_config.h"
 #include "debug.h"
 
 #include "common/maths.h"
@@ -67,6 +68,7 @@
 #include "telemetry/telemetry.h"
 
 #include "flight/mixer.h"
+#define MIXER_TRICOPTER_INTERNALS
 #include "flight/mixer_tricopter.h"
 #include "flight/altitudehold.h"
 #include "flight/failsafe.h"
@@ -127,6 +129,7 @@ static uint16_t getPitchCorrectionMaxPhaseShift(int16_t servoAngle,
 static uint16_t getLinearServoValue(servoParam_t *servoConf, uint16_t servoValue);
 static uint16_t virtualServoStep(uint16_t currentAngle, int16_t servoSpeed, float dT, servoParam_t *servoConf, uint16_t servoValue);
 static uint16_t feedbackServoStep(mixerConfig_t *mixerConf, uint16_t tailServoADC);
+STATIC_UNIT_TESTED void tailTuneModeThrustTorque(thrustTorque_t *pTT, const bool isThrottleHigh);
 static void tailTuneModeServoSetup(struct servoSetup_t *pSS, servoParam_t *pServoConf, int16_t *pServoVal);
 static void triTailTuneStep(servoParam_t *pServoConf, int16_t *pServoVal);
 static void updateServoAngle(void);
@@ -418,7 +421,7 @@ static void triTailTuneStep(servoParam_t *pServoConf, int16_t *pServoVal)
     }
 }
 
-void tailTuneModeThrustTorque(thrustTorque_t *pTT, const bool isThrottleHigh)
+STATIC_UNIT_TESTED void tailTuneModeThrustTorque(thrustTorque_t *pTT, const bool isThrottleHigh)
 {
     switch(pTT->state)
     {

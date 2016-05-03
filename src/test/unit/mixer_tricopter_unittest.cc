@@ -22,7 +22,6 @@
 
 extern "C" {
 #include "debug.h"
-
 #include "platform.h"
 
 #include "config/runtime_config.h"
@@ -34,6 +33,7 @@ extern "C" {
 #include "drivers/accgyro.h"
 
 #include "flight/mixer.h"
+#define MIXER_TRICOPTER_INTERNALS
 #include "flight/mixer_tricopter.h"
 
 #include "io/beeper.h"
@@ -43,12 +43,21 @@ servoParam_t servoConf;
 mixerConfig_t mixerConfig;
 tailTune_t tailTune;
 int16_t servo[MAX_SUPPORTED_SERVOS];
+
+void tailTuneModeThrustTorque(thrustTorque_t *pTT, const bool isThrottleHigh);
 }
 
 #include "unittest_macros.h"
 #include "gtest/gtest.h"
 
-class BasicTest: public ::testing::Test {
+class ThrustFactorCalculationTest: public ::testing::Test {
+    // We expect factor = 1 / tan(angle) (but adjusted for formats)
+    // Say we want mixerConfig.tri_tail_motor_thrustfactor to be 139, i.e. the factor should be 13.9
+    // angle = 1 / atan(factor), according to #25
+    // adjust to decidegrees and multiply by servoAvgAngle.numOf
+    // i.e. multiply by 3000, then round to integer
+    // so even if 12345 looks like an arbitrarily chosen number, it is the result of this calculation and corresponds to 4.115 degrees.
+    // Due to possible rounding effects we add a tolerance to the test
 protected:
     virtual void SetUp() {
         memset(&servoConf, 0, sizeof(servoConf));
@@ -70,41 +79,44 @@ protected:
     }
 };
 
-TEST_F(BasicTest, TestThrustFactorCalculation139) {
+TEST_F(ThrustFactorCalculationTest, 139) {
     // given
-    // expecting tri_tail_motor_thrustfactor = 1 / tan(angle)
     tailTune.tt.servoAvgAngle.sum = 12345;
     // and
     tailTuneModeThrustTorque(&tailTune.tt, true);
     // then
     EXPECT_NEAR(139, mixerConfig.tri_tail_motor_thrustfactor, 1);
+    EXPECT_EQ(tailTune.tt.state, TT_DONE);
 }
 
-TEST_F(BasicTest, TestThrustFactorCalculation145) {
+TEST_F(ThrustFactorCalculationTest, 145) {
     // given
     tailTune.tt.servoAvgAngle.sum = 11836;
     // and
     tailTuneModeThrustTorque(&tailTune.tt, true);
     // then
     EXPECT_NEAR(145, mixerConfig.tri_tail_motor_thrustfactor, 1);
+    EXPECT_EQ(tailTune.tt.state, TT_DONE);
 }
 
-TEST_F(BasicTest, TestThrustFactorCalculation125) {
+TEST_F(ThrustFactorCalculationTest, 125) {
     // given
     tailTune.tt.servoAvgAngle.sum = 13722;
     // and
     tailTuneModeThrustTorque(&tailTune.tt, true);
     // then
     EXPECT_NEAR(125, mixerConfig.tri_tail_motor_thrustfactor, 1);
+    EXPECT_EQ(tailTune.tt.state, TT_DONE);
 }
 
-TEST_F(BasicTest, TestThrustFactorCalculation80) {
+TEST_F(ThrustFactorCalculationTest, 80) {
     // given
     tailTune.tt.servoAvgAngle.sum = 21375;
     // and
     tailTuneModeThrustTorque(&tailTune.tt, true);
     // then
     EXPECT_NEAR(80, mixerConfig.tri_tail_motor_thrustfactor, 1);
+    EXPECT_EQ(tailTune.tt.state, TT_DONE);
 }
 
 //STUBS
@@ -132,46 +144,46 @@ uint16_t getCurrentMinthrottle(void) {
 }
 
 void beeper(beeperMode_e mode) {
-    (void) mode;
+    UNUSED(mode);
 }
 
 bool isRcAxisWithinDeadband(int32_t axis) {
-    (void) axis;
+    UNUSED(axis);
     return true;
 }
 
 uint16_t disableFlightMode(flightModeFlags_e mask) {
-    (void) mask;
+    UNUSED(mask);
     return 0;
 }
 
 void beeperConfirmationBeeps(uint8_t beepCount) {
-    (void) beepCount;
+    UNUSED(beepCount);
 }
 
 uint16_t enableFlightMode(flightModeFlags_e mask) {
-    (void) mask;
+    UNUSED(mask);
     return 0;
 }
 
 throttleStatus_e calculateThrottleStatus(rxConfig_t *rxConfig,
         uint16_t deadband3d_throttle) {
-    (void) rxConfig;
-    (void) deadband3d_throttle;
+    UNUSED(rxConfig);
+    UNUSED(deadband3d_throttle);
     return (throttleStatus_e) 0;
 }
 
 uint16_t adcGetChannel(uint8_t channel) {
-    (void) channel;
+    UNUSED(channel);
     return 0;
 }
 
 float filterApplyPt1(float input, filterStatePt1_t *filter, uint8_t f_cut,
         float dt) {
-    (void) input;
-    (void) filter;
-    (void) f_cut;
-    (void) dt;
+    UNUSED(input);
+    UNUSED(filter);
+    UNUSED(f_cut);
+    UNUSED(dt);
     return 0.0;
 }
 
