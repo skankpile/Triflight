@@ -57,6 +57,7 @@ class ThrustFactorCalculationTest: public ::testing::Test {
     // adjust to decidegrees and multiply by servoAvgAngle.numOf
     // i.e. multiply by 3000, then round to integer
     // so even if 12345 looks like an arbitrarily chosen number, it is the result of this calculation and corresponds to 4.115 degrees.
+    // after that, add 270000 (90 deg) since the angles actually start at horisontal left
     // Due to possible rounding effects we add a tolerance to the test
 protected:
     virtual void SetUp() {
@@ -81,7 +82,7 @@ protected:
 
 TEST_F(ThrustFactorCalculationTest, 139) {
     // given
-    tailTune.tt.servoAvgAngle.sum = 12345;
+    tailTune.tt.servoAvgAngle.sum = 12345 + 270000;
     // and
     tailTuneModeThrustTorque(&tailTune.tt, true);
     // then
@@ -91,7 +92,7 @@ TEST_F(ThrustFactorCalculationTest, 139) {
 
 TEST_F(ThrustFactorCalculationTest, 145) {
     // given
-    tailTune.tt.servoAvgAngle.sum = 11836;
+    tailTune.tt.servoAvgAngle.sum = 11836 + 270000;
     // and
     tailTuneModeThrustTorque(&tailTune.tt, true);
     // then
@@ -101,7 +102,7 @@ TEST_F(ThrustFactorCalculationTest, 145) {
 
 TEST_F(ThrustFactorCalculationTest, 125) {
     // given
-    tailTune.tt.servoAvgAngle.sum = 13722;
+    tailTune.tt.servoAvgAngle.sum = 13722 + 270000;
     // and
     tailTuneModeThrustTorque(&tailTune.tt, true);
     // then
@@ -111,7 +112,7 @@ TEST_F(ThrustFactorCalculationTest, 125) {
 
 TEST_F(ThrustFactorCalculationTest, 80) {
     // given
-    tailTune.tt.servoAvgAngle.sum = 21375;
+    tailTune.tt.servoAvgAngle.sum = 21375 + 270000;
     // and
     tailTuneModeThrustTorque(&tailTune.tt, true);
     // then
