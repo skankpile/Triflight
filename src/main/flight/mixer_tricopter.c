@@ -20,6 +20,7 @@
 #include <math.h>
 #include <float.h>
 #include "platform.h"
+#include "build_config.h"
 #include "debug.h"
 
 #include "common/maths.h"
@@ -67,6 +68,7 @@
 #include "telemetry/telemetry.h"
 
 #include "flight/mixer.h"
+#define MIXER_TRICOPTER_INTERNALS
 #include "flight/mixer_tricopter.h"
 #include "flight/altitudehold.h"
 #include "flight/failsafe.h"
@@ -85,82 +87,8 @@
 #define TRI_YAW_FORCE_CURVE_SIZE (100)
 #define TRI_TAIL_SERVO_MAX_ANGLE (500)
 
-#define SERVO_CALIB_NUM_OF_MEAS  (5)
-
-#define TT_CALIB_I_TARGET       (8)
-#define TT_CALIB_I_LARGE_INCREMENT_LIMIT (10)
-
 #define IsDelayElapsed_us(timestamp_us, delay_us) ((uint32_t)(micros() - timestamp_us) >= delay_us)
 #define IsDelayElapsed_ms(timestamp_ms, delay_ms) ((uint32_t)(millis() - timestamp_ms) >= delay_ms)
-
-typedef enum {
-    TT_IDLE = 0,
-    TT_WAIT,
-    TT_ACTIVE,
-    TT_WAIT_FOR_DISARM,
-    TT_DONE,
-    TT_FAIL,
-} tailTuneState_e;
-
-typedef enum {
-    SS_IDLE = 0,
-    SS_SETUP,
-    SS_CALIB,
-} servoSetupState_e;
-
-typedef enum {
-    SS_C_IDLE = 0,
-    SS_C_CALIB_MIN_MID_MAX,
-    SS_C_CALIB_SPEED,
-} servoSetupCalibState_e;
-
-typedef enum {
-    SS_C_MIN = 0,
-    SS_C_MID,
-    SS_C_MAX,
-} servoSetupCalibSubState_e;
-
-typedef enum {
-    TT_MODE_NONE = 0,
-    TT_MODE_THRUST_TORQUE,
-    TT_MODE_SERVO_SETUP,
-} tailtuneMode_e;
-
-typedef struct tailTune_s {
-    tailtuneMode_e mode;
-    struct thrustTorque_t
-    {
-        tailTuneState_e state;
-        uint32_t startBeepDelay_ms;
-        uint32_t timestamp_ms;
-        uint32_t lastAdjTime_ms;
-        struct servoAvgAngle_t
-        {
-            uint32_t sum;
-            uint16_t numOf;
-        } servoAvgAngle;
-    }tt;
-    struct servoSetup_t
-    {
-        servoSetupState_e state;
-        float servoVal;
-        int16_t *pLimitToAdjust;
-        struct servoCalib_t
-        {
-            _Bool done;
-            _Bool waitingServoToStop;
-            servoSetupCalibState_e state;
-            servoSetupCalibSubState_e subState;
-            uint32_t timestamp_ms;
-            struct average_t
-            {
-                uint16_t *pCalibConfig;
-                uint32_t sum;
-                uint16_t numOf;
-            } avg;
-        }cal;
-    }ss;
-} tailTune_t;
 
 #endif
 
@@ -188,7 +116,6 @@ static mixerConfig_t *gpMixerConfig;
 static uint16_t tailServoADC = 0;
 static AdcChannel tailServoADCChannel = ADC_EXTERNAL1;
 
-
 static void initCurves();
 static uint16_t getServoValueAtAngle(servoParam_t * servoConf, uint16_t angle);
 static float getPitchCorrectionAtTailAngle(float angle, float thrustFactor);
@@ -202,7 +129,7 @@ static uint16_t getPitchCorrectionMaxPhaseShift(int16_t servoAngle,
 static uint16_t getLinearServoValue(servoParam_t *servoConf, uint16_t servoValue);
 static uint16_t virtualServoStep(uint16_t currentAngle, int16_t servoSpeed, float dT, servoParam_t *servoConf, uint16_t servoValue);
 static uint16_t feedbackServoStep(mixerConfig_t *mixerConf, uint16_t tailServoADC);
-static void tailTuneModeThrustTorque(struct thrustTorque_t *pTT, const bool isThrottleHigh);
+STATIC_UNIT_TESTED void tailTuneModeThrustTorque(thrustTorque_t *pTT, const bool isThrottleHigh);
 static void tailTuneModeServoSetup(struct servoSetup_t *pSS, servoParam_t *pServoConf, int16_t *pServoVal);
 static void triTailTuneStep(servoParam_t *pServoConf, int16_t *pServoVal);
 static void updateServoAngle(void);
@@ -494,7 +421,7 @@ static void triTailTuneStep(servoParam_t *pServoConf, int16_t *pServoVal)
     }
 }
 
-static void tailTuneModeThrustTorque(struct thrustTorque_t *pTT, const bool isThrottleHigh)
+STATIC_UNIT_TESTED void tailTuneModeThrustTorque(thrustTorque_t *pTT, const bool isThrottleHigh)
 {
     switch(pTT->state)
     {
@@ -540,7 +467,7 @@ static void tailTuneModeThrustTorque(struct thrustTorque_t *pTT, const bool isTh
             isRcAxisWithinDeadband(ROLL) &&
             isRcAxisWithinDeadband(PITCH) &&
             isRcAxisWithinDeadband(YAW) &&
-            (fabsf(gyroADC[FD_YAW] * gyro.scale) <= 4.0f))
+            (fabsf(gyroADC[FD_YAW] * gyro.scale) <= 4.0f)) // deg/s
         {
             if (IsDelayElapsed_ms(pTT->timestamp_ms, 250))
             {
