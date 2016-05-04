@@ -498,8 +498,9 @@ STATIC_UNIT_TESTED void tailTuneModeThrustTorque(thrustTorque_t *pTT, const bool
     case TT_WAIT_FOR_DISARM:
         if (!ARMING_FLAG(ARMED))
         {
-            float averageServoAngle = pTT->servoAvgAngle.sum / 10.0f / pTT->servoAvgAngle.numOf - 90.0f;
-            if (averageServoAngle > 0.5f && averageServoAngle < 40.f) { // TODO: Too wide? or totally unnecessary?
+            float averageServoAngle = pTT->servoAvgAngle.sum / 10.0f / pTT->servoAvgAngle.numOf;
+            if (averageServoAngle > 90.5f && averageServoAngle < 130.f) {
+                averageServoAngle -= 90.0f;
                 averageServoAngle *= RAD;
                 gpMixerConfig->tri_tail_motor_thrustfactor = rint(10.0 / tan(averageServoAngle));
 
