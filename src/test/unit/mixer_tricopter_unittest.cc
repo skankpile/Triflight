@@ -73,6 +73,7 @@ protected:
             servo[i] = DEFAULT_SERVO_MIDDLE;
         }
 
+        mixerConfig.tri_tail_motor_thrustfactor = 123; // so we can check it's unchanged on TT_FAIL
         triInitMixer(&servoConf, &servo[5], &mixerConfig);
         tailTune.mode = TT_MODE_THRUST_TORQUE;
         tailTune.tt.state = TT_WAIT_FOR_DISARM;
@@ -118,6 +119,26 @@ TEST_F(ThrustFactorCalculationTest, 80) {
     // then
     EXPECT_NEAR(80, mixerConfig.tri_tail_motor_thrustfactor, 1);
     EXPECT_EQ(tailTune.tt.state, TT_DONE);
+}
+
+TEST_F(ThrustFactorCalculationTest, err90) {
+    // given
+    tailTune.tt.servoAvgAngle.sum = 270000;
+    // and
+    tailTuneModeThrustTorque(&tailTune.tt, true);
+    // then
+    EXPECT_EQ(123, mixerConfig.tri_tail_motor_thrustfactor);
+    EXPECT_EQ(tailTune.tt.state, TT_FAIL);
+}
+
+TEST_F(ThrustFactorCalculationTest, err130) {
+    // given
+    tailTune.tt.servoAvgAngle.sum = 390000;
+    // and
+    tailTuneModeThrustTorque(&tailTune.tt, true);
+    // then
+    EXPECT_EQ(123, mixerConfig.tri_tail_motor_thrustfactor);
+    EXPECT_EQ(tailTune.tt.state, TT_FAIL);
 }
 
 //STUBS

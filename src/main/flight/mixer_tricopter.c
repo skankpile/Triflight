@@ -499,31 +499,10 @@ STATIC_UNIT_TESTED void tailTuneModeThrustTorque(thrustTorque_t *pTT, const bool
         if (!ARMING_FLAG(ARMED))
         {
             float averageServoAngle = pTT->servoAvgAngle.sum / 10.0f / pTT->servoAvgAngle.numOf;
-
-            // Find out the factor that gives least yaw force at the average angle
-            float factor = TAIL_THRUST_FACTOR_MIN_FLOAT;
-            const float angleRad = DEGREES_TO_RADIANS(averageServoAngle);
-            float minAbsForce = FLT_MAX;
-            float minFactor = TAIL_THRUST_FACTOR_MIN_FLOAT;
-            _Bool done = false;
-            for (factor = TAIL_THRUST_FACTOR_MIN_FLOAT; (done == false) && (factor < TAIL_THRUST_FACTOR_MAX_FLOAT); factor += 0.1f)
-            {
-                float absForceAtAngle = fabsf(-factor * cosf(angleRad) - sinf(angleRad)) * getPitchCorrectionAtTailAngle(angleRad, factor);
-
-                if (absForceAtAngle < minAbsForce)
-                {
-                    minAbsForce = absForceAtAngle;
-                    minFactor = factor;
-                }
-                else
-                {
-                    done = true;
-                }
-            }
-
-            if (done && minFactor > TAIL_THRUST_FACTOR_MIN_FLOAT + 0.01f)
-            {
-                gpMixerConfig->tri_tail_motor_thrustfactor = minFactor * 10.0f;
+            if (averageServoAngle > 90.5f && averageServoAngle < 120.f) {
+                averageServoAngle -= 90.0f;
+                averageServoAngle *= RAD;
+                gpMixerConfig->tri_tail_motor_thrustfactor = 10.0f * cos_approx(averageServoAngle) / sin_approx(averageServoAngle);
 
                 saveConfigAndNotify();
 
