@@ -499,15 +499,17 @@ STATIC_UNIT_TESTED void tailTuneModeThrustTorque(thrustTorque_t *pTT, const bool
         if (!ARMING_FLAG(ARMED))
         {
             float averageServoAngle = pTT->servoAvgAngle.sum / 10.0f / pTT->servoAvgAngle.numOf;
-            if (averageServoAngle > 90.5f && averageServoAngle < 130.f) {
+            if (averageServoAngle > 90.5f && averageServoAngle < 120.f) {
                 averageServoAngle -= 90.0f;
                 averageServoAngle *= RAD;
-                gpMixerConfig->tri_tail_motor_thrustfactor = rint(10.0 / tan(averageServoAngle));
+                gpMixerConfig->tri_tail_motor_thrustfactor = 10.0f * cos_approx(averageServoAngle) / sin_approx(averageServoAngle);
 
                 saveConfigAndNotify();
 
                 pTT->state = TT_DONE;
-            } else {
+            }
+            else
+            {
                 pTT->state = TT_FAIL;
             }
             pTT->timestamp_ms = millis();
