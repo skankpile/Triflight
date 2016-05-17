@@ -143,15 +143,15 @@ void resetPidProfile(pidProfile_t *pidProfile)
 {
     pidProfile->pidController = 1;
 
-    pidProfile->P8[ROLL] = 49;
-    pidProfile->I8[ROLL] = 30;
-    pidProfile->D8[ROLL] = 48;
-    pidProfile->P8[PITCH] = 43;
-    pidProfile->I8[PITCH] = 30;
-    pidProfile->D8[PITCH] = 26;
-    pidProfile->P8[YAW] = 85;
-    pidProfile->I8[YAW] = 17;
-    pidProfile->D8[YAW] = 40;
+    pidProfile->P8[ROLL] = 40;
+    pidProfile->I8[ROLL] = 24;
+    pidProfile->D8[ROLL] = 30;
+    pidProfile->P8[PITCH] = 38;
+    pidProfile->I8[PITCH] = 23;
+    pidProfile->D8[PITCH] = 20;
+    pidProfile->P8[YAW] = 70;
+    pidProfile->I8[YAW] = 10;
+    pidProfile->D8[YAW] = 35;
     pidProfile->P8[PIDALT] = 50;
     pidProfile->I8[PIDALT] = 0;
     pidProfile->D8[PIDALT] = 0;
@@ -302,7 +302,7 @@ static void resetControlRateConfig(controlRateConfig_t *controlRateConfig) {
     controlRateConfig->dynThrPID = 0;
     controlRateConfig->rcYawExpo8 = 83;
     controlRateConfig->tpa_breakpoint = 1500;
-    controlRateConfig->tri_dynamic_yaw_minthrottle = 300; // 3x YAW gain at min throttle
+    controlRateConfig->tri_dynamic_yaw_minthrottle = 290; // 2.9x YAW gain at min throttle
     controlRateConfig->tri_dynamic_yaw_maxthrottle = 100; // no reduction by default
 
     controlRateConfig->rates[FD_PITCH] = 55;
@@ -312,7 +312,7 @@ static void resetControlRateConfig(controlRateConfig_t *controlRateConfig) {
 
 void resetRcControlsConfig(rcControlsConfig_t *rcControlsConfig) {
     rcControlsConfig->deadband = 5;
-    rcControlsConfig->yaw_deadband = 5;
+    rcControlsConfig->yaw_deadband = 9;
     rcControlsConfig->alt_hold_deadband = 40;
     rcControlsConfig->alt_hold_fast_change = 1;
 }
@@ -337,7 +337,7 @@ static void resetMixerConfig(mixerConfig_t *mixerConfig) {
     mixerConfig->tri_servo_feedback = TRI_SERVO_FB_VIRTUAL;
 #endif //RCE
     mixerConfig->tri_motor_acc_yaw_correction = 6;
-    mixerConfig->tri_motor_acceleration = 0.20f;
+    mixerConfig->tri_motor_acceleration = 0.18f;
 #endif //USE_SERVOS
 }
 
