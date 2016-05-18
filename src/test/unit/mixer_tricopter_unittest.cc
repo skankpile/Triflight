@@ -43,6 +43,8 @@ servoParam_t servoConf;
 mixerConfig_t mixerConfig;
 tailTune_t tailTune;
 int16_t servo[MAX_SUPPORTED_SERVOS];
+controlRateConfig_t *currentControlRateProfile;
+int16_t motor[MAX_SUPPORTED_MOTORS];
 
 void tailTuneModeThrustTorque(thrustTorque_t *pTT, const bool isThrottleHigh);
 }
@@ -210,6 +212,19 @@ float filterApplyPt1(float input, filterStatePt1_t *filter, uint8_t f_cut,
 }
 
 void saveConfigAndNotify(void) {
+}
+
+uint16_t getCurrentMaxthrottle(void) {
+    return 2000;
+}
+
+void pidResetErrorGyroAxis(flight_dynamics_index_t axis) {
+    UNUSED(axis);
+}
+
+void pidSetExpectedGyroError(flight_dynamics_index_t axis, int16_t error) {
+    UNUSED(axis);
+    UNUSED(error);
 }
 
 }
