@@ -235,10 +235,10 @@ protected:
             .thrExpo8 = 0,
             .rates = {0, 0, 0},
             .dynThrPID = 0,
-            .tpa_yaw_rate = 0,
             .rcYawExpo8 = 0,
             .tpa_breakpoint = 0,
-            .tpa_yaw_breakpoint = 0
+            .tri_dynamic_yaw_minthrottle = 1000,
+            .tri_dynamic_yaw_maxthrottle = 2000
     };
 
     adjustmentRange_t adjustmentRange = {
