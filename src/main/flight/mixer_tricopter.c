@@ -172,7 +172,7 @@ void triInitMixer(servoParam_t *pTailServoConfig,
     motorAcceleration = (float)throttleRange / gpMixerConfig->tri_motor_acceleration;
 
     // Reset the I term when motor deceleration has lasted 35% of the min to max time
-    resetITermDecelerationLasted_ms = gpMixerConfig->tri_motor_acceleration * 1000.0f * 0.35f;
+    resetITermDecelerationLasted_ms = (uint16_t)(gpMixerConfig->tri_motor_acceleration * 1000.0f * 0.35f);
 
     initCurves();
     updateServoFeedbackADCChannel(gpMixerConfig->tri_servo_feedback);
@@ -825,12 +825,12 @@ static int16_t scaleAUXChannel(u8 channel, int16_t scale)
 static void checkMotorAcceleration(void)
 {
     static float previousMotorSpeed = 1000.0f;
-    static uint32_t accelerationStartedAt_ms = 0;
+    static uint32_t decelerationStartedAt_ms = 0;
     static bool accelerating = false;
 
-    float tailMotorSpeed = tailMotorVirtual;
+    const float tailMotorSpeed = tailMotorVirtual;
     // Calculate how much the motor speed changed since last time
-    float acceleration = (tailMotorSpeed - previousMotorSpeed);
+    const float acceleration = (tailMotorSpeed - previousMotorSpeed);
     previousMotorSpeed = tailMotorSpeed;
 
     // Check if acceleration has changed to deceleration and vice versa
@@ -838,8 +838,6 @@ static void checkMotorAcceleration(void)
     {
         if (!accelerating)
         {
-            // Take a timestamp when direction changes
-            accelerationStartedAt_ms = millis();
             accelerating = true;
         }
     }
@@ -847,7 +845,8 @@ static void checkMotorAcceleration(void)
     {
         if (accelerating)
         {
-            accelerationStartedAt_ms = millis();
+            // Take a timestamp when direction and deceleration starts
+            decelerationStartedAt_ms = millis();
             accelerating = false;
         }
     }
@@ -859,7 +858,7 @@ static void checkMotorAcceleration(void)
      * Tests have shown that this is mostly needed when throttle is cut (motor decelerating), so only
      * reset I term in that case.
      */
-    if (!accelerating && IsDelayElapsed_ms(accelerationStartedAt_ms, resetITermDecelerationLasted_ms))
+    if (!accelerating && IsDelayElapsed_ms(decelerationStartedAt_ms, resetITermDecelerationLasted_ms))
     {
         pidResetErrorGyroAxis(FD_YAW);
     }
