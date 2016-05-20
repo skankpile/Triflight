@@ -235,10 +235,10 @@ protected:
             .thrExpo8 = 0,
             .rates = {0, 0, 0},
             .dynThrPID = 0,
-            .tpa_yaw_rate = 0,
             .rcYawExpo8 = 0,
             .tpa_breakpoint = 0,
-            .tpa_yaw_breakpoint = 0
+            .tri_dynamic_yaw_minthrottle = 100,
+            .tri_dynamic_yaw_maxthrottle = 100
     };
 
     adjustmentRange_t adjustmentRange = {
@@ -268,7 +268,8 @@ protected:
         controlRateConfig.rates[2] = 0;
         controlRateConfig.dynThrPID = 0;
         controlRateConfig.tpa_breakpoint = 0;
-
+        controlRateConfig.tri_dynamic_yaw_minthrottle = 100;
+        controlRateConfig.tri_dynamic_yaw_maxthrottle = 100;
     }
 };
 
