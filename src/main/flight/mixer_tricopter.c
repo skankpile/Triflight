@@ -859,13 +859,17 @@ static void checkMotorAcceleration(void)
      * Tests have shown that this is mostly needed when throttle is cut (motor decelerating), so only
      * reset I term in that case.
      */
-    if (!accelerating && IsDelayElapsed_ms(decelerationStartedAt_ms, resetITermDecelerationLasted_ms))
+    if (!accelerating)
     {
-        pidResetErrorGyroAxis(FD_YAW);
-    }
+        if (IsDelayElapsed_ms(decelerationStartedAt_ms, resetITermDecelerationLasted_ms))
+        {
+            pidResetErrorGyroAxis(FD_YAW);
 
-    // Set the expected axis error based on tail motor acceleration and configured gain
-    pidSetExpectedGyroError(FD_YAW, acceleration * gpMixerConfig->tri_motor_acc_yaw_correction / 10);
+        }
+
+        // Set the expected axis error based on tail motor acceleration and configured gain
+        pidSetExpectedGyroError(FD_YAW, acceleration * gpMixerConfig->tri_motor_acc_yaw_correction / 10);
+    }
 }
 
 static int16_t dynamicYaw(int16_t PIDoutput)
