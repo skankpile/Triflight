@@ -586,6 +586,7 @@ STATIC_UNIT_TESTED void tailTuneModeThrustTorque(thrustTorque_t *pTT, const bool
 
 static void tailTuneModeServoSetup(struct servoSetup_t *pSS, servoParam_t *pServoConf, int16_t *pServoVal)
 {
+
     // Check mode select
     if (isRcAxisWithinDeadband(PITCH) && (rcCommand[ROLL] < -100))
     {
@@ -622,7 +623,7 @@ static void tailTuneModeServoSetup(struct servoSetup_t *pSS, servoParam_t *pServ
         if (!isRcAxisWithinDeadband(YAW))
         {
             pSS->servoVal += -1.0f * (float)rcCommand[YAW] * dT;
-            pSS->servoVal = constrain(pSS->servoVal, 950, 2050);
+            pSS->servoVal = constrainf(pSS->servoVal, 900.0f, 2100.0f);
             *pSS->pLimitToAdjust = pSS->servoVal;
         }
         break;
