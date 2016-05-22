@@ -302,8 +302,8 @@ static void resetControlRateConfig(controlRateConfig_t *controlRateConfig) {
     controlRateConfig->dynThrPID = 0;
     controlRateConfig->rcYawExpo8 = 83;
     controlRateConfig->tpa_breakpoint = 1500;
-    controlRateConfig->tri_dynamic_yaw_minthrottle = 290; // 2.9x YAW gain at min throttle
-    controlRateConfig->tri_dynamic_yaw_maxthrottle = 100; // no reduction by default
+    controlRateConfig->tri_dynamic_yaw_minthrottle = 250; // 2.5x YAW gain at min throttle
+    controlRateConfig->tri_dynamic_yaw_maxthrottle = 60; // 0.6x YAW gain at max throttle
 
     controlRateConfig->rates[FD_PITCH] = 55;
     controlRateConfig->rates[FD_ROLL] = 55;
@@ -336,7 +336,7 @@ static void resetMixerConfig(mixerConfig_t *mixerConfig) {
 #else
     mixerConfig->tri_servo_feedback = TRI_SERVO_FB_VIRTUAL;
 #endif //RCE
-    mixerConfig->tri_motor_acc_yaw_correction = 6;
+    mixerConfig->tri_motor_acc_yaw_correction = 10;
     mixerConfig->tri_motor_acceleration = 0.18f;
 #endif //USE_SERVOS
 }
