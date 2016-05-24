@@ -164,7 +164,7 @@ void triInitMixer(servoParam_t *pTailServoConfig,
     gpTailServoConf = pTailServoConfig;
     gpTailServo = pTailServo;
     tailServoThrustFactor = pMixerConfig->tri_tail_motor_thrustfactor / 10.0f;
-    tailServoMaxAngle = pMixerConfig->tri_servo_angle_at_max;
+    tailServoMaxAngle = gpTailServoConf->angleAtMax *10;
     tailServoSpeed = pMixerConfig->tri_tail_servo_speed;
     gpMixerConfig = pMixerConfig;
 
@@ -409,7 +409,7 @@ static uint16_t feedbackServoStep(mixerConfig_t *mixerConf, uint16_t tailServoAD
     const int32_t ADCFeedback = tailServoADC;
     const int16_t midValue = mixerConf->tri_servo_mid_adc;
     const int16_t endValue = ADCFeedback < midValue ? mixerConf->tri_servo_min_adc : mixerConf->tri_servo_max_adc;
-    const int16_t tailServoMaxAngle = mixerConf->tri_servo_angle_at_max;
+    const int16_t tailServoMaxAngle =  gpTailServoConf->angleAtMax *10;
     const int16_t endAngle = ADCFeedback < midValue ? TRI_TAIL_SERVO_ANGLE_MID - tailServoMaxAngle : TRI_TAIL_SERVO_ANGLE_MID + tailServoMaxAngle;
     return ((endAngle - TRI_TAIL_SERVO_ANGLE_MID) * (ADCFeedback - midValue) / (endValue - midValue) + TRI_TAIL_SERVO_ANGLE_MID);
 }

@@ -137,7 +137,7 @@ static uint32_t activeFeaturesLatch = 0;
 static uint8_t currentControlRateProfileIndex = 0;
 controlRateConfig_t *currentControlRateProfile;
 
-static const uint8_t EEPROM_CONF_VERSION = 113;
+static const uint8_t EEPROM_CONF_VERSION = 113;//TODO: Step up
 
 void resetPidProfile(pidProfile_t *pidProfile)
 {
@@ -325,7 +325,6 @@ static void resetMixerConfig(mixerConfig_t *mixerConfig) {
 #ifdef USE_SERVOS
     mixerConfig->tri_unarmed_servo = 1;
     mixerConfig->servo_lowpass_freq = 400.0f;
-    mixerConfig->tri_servo_angle_at_max = 400;
     mixerConfig->tri_tail_motor_thrustfactor = 138;
     mixerConfig->tri_tail_servo_speed = 300; // Default for BMS-210DMH at 5V
     mixerConfig->tri_servo_min_adc = 0;
@@ -513,6 +512,10 @@ STATIC_UNIT_TESTED void resetConf(void)
         currentProfile->servoConf[i].angleAtMin = DEFAULT_SERVO_MIN_ANGLE;
         currentProfile->servoConf[i].angleAtMax = DEFAULT_SERVO_MAX_ANGLE;
         currentProfile->servoConf[i].forwardFromChannel = CHANNEL_FORWARDING_DISABLED;
+    }
+    if (masterConfig.mixerMode == MIXER_TRI) {
+        currentProfile->servoConf[5].angleAtMin = 40;
+        currentProfile->servoConf[5].angleAtMax = 40;
     }
 
     // gimbal
