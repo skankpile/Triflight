@@ -137,7 +137,7 @@ static uint32_t activeFeaturesLatch = 0;
 static uint8_t currentControlRateProfileIndex = 0;
 controlRateConfig_t *currentControlRateProfile;
 
-static const uint8_t EEPROM_CONF_VERSION = 113;//TODO: Step up
+static const uint8_t EEPROM_CONF_VERSION = 114;
 
 void resetPidProfile(pidProfile_t *pidProfile)
 {
