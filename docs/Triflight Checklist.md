@@ -1,4 +1,4 @@
-# Setup instructions for Triflight 0.5 Beta2
+# Setup instructions for Triflight 0.5 Beta3
 
 This guide is intended more as a practical checklist than a fully detailed instruction.
 It has some pointers that may help you to find more details, typically you should read the release notes or search the [forum at RCExplorer](http://rcexplorer.se/forums/).
@@ -45,6 +45,7 @@ Midpoints around 1500, min as close to 1000 from above as possible, max as close
 For deadband and yaw_deadband, check the servo tab and release the stick to center both slow and abrupt.
 Check how much the value differs from 1500.
 Add 2-3 and you have your deadband value.
+To have the mid's inside the deadband tolerance is critical for the tail tune to work.
 
 ### Configurator settings
 
@@ -88,18 +89,18 @@ If you have calibrated your accelerometer on the level surface already, make sur
 You will need to connect the flight battery to your tricopter to continue, so make sure the propellers are off!
 
 Without the configurator.
-Do not arm.
 Zero throttle and not touching sticks.
 Connect battery.
 Do not arm.
 
 - Turn on tail tune mode
-- Push cyclic stick max left, right or up shortly to select min, max or mid
+- Push cyclic stick left, right or up shortly to select min, max or mid
 - Adjust with yaw stick (mid must be very accurate)
 - Turn off tail tune mode
 - Save values with stick command (both max down and out)
 - Remove battery
 
+If you want to cancel before finishing this process you just dont save before removing the battery (but if you start the hardware servo feedback calibration the values will be saved).
 If you use the hardware servo feedback there is one more step.
 See "Extra for hardware servo feedback" below.
 
@@ -140,37 +141,51 @@ Tail tune can be activated in air and it will sound a Buzzer pattern.
 After activating the mode user has 5 seconds to take copter into hover.
 
 You need a very calm day.
-Let it hover and do not touch the sticks for 30s.
+Let it hover and do not touch the sticks for about 30s.
 It's ok to use the sticks to adjust the hover position but for that time the tuning is paused.
 
+When the tuning measurements are done there will be a series of very short beeps.
 After the tune it will sound the Buzzer pattern again.
 
 Land and disarm, still having tail tune on.
 The ready beeping should continue every 2 seconds.
-The values are now automatically saved, **do not** use stick command.
-Deactivate tail tune a few seconds **after** landing and disarming copter!
+The values are now automatically saved, if you disarm first, wait a few seconds and then deactivate the tail tune. **Do not** use stick command.
 
 Use the configurator CLI and check *tri_tail_motor_thrustfactor*.
-If it's still 138 (default) or if it's 10 it's likely the tuning failed.
+If it's still 138 (default) it's likely the tuning failed.
 
-## PID Settings
+## PID Settings and more
 
-PID settings are already adjusted for the stock mini and should be ok for most people.
+The best PID settings depend on your configuration.
+The default settings are for the MiniTri with the new EMACS 2300 motor.
+
+Recommended setting for a MiniTri with the DYS 1800 motor is:
+```
+set p_pitch = 43
+set i_pitch = 30
+set d_pitch = 26
+set p_roll = 49
+set i_roll = 30
+set d_roll = 48
+set p_yaw = 170
+set i_yaw = 45
+set d_yaw = 45
+
+set roll_rate = 75
+set pitch_rate = 75
+set yaw_rate = 75
+
+set tri_motor_acc_yaw_correction = 16
+
+set gyro_soft_lpf =  90.000
+```
+
 However, you may want to adjust the rate and expo settings if you want more stability for relaxed LOS flying.
-A beginner could for example try these CLI commands:
-```
-set p_level = 28
-set i_level = 28
-set rc_rate = 70
-set rc_expo = 50
-set roll_rate = 30
-set pitch_rate = 30
-set yaw_rate = 35
-set max_angle_inclination = 300
-save
-```
-With this max_angle_inclination setting it will still move fast.
-On very calms days maybe you can reduce it more.
+A beginner could for example try to:
+Increase *p_level* and *i_level* by 30-50% to have more self stabilisation.
+Reduce *roll_rate* *pitch_rate* and *yaw_rate* to 30.
+Reduce *rc_expo* to 50.
+Reduce *max_angle_inclination* to 300.
 
 When you are more comfortable you change the values gradually to the stock settings.
 
@@ -180,6 +195,7 @@ When you are more comfortable you change the values gradually to the stock setti
 
 Make a new back-up of the configurator and a CLI dump and store with a new filename.
 It's good to have your favorite settings for reference.
+It is also good to use a file comparison tool so you can compare with the stock settings and identify your changes easy.
 
 ## Extra for custom servo
 
@@ -203,8 +219,9 @@ set tri_servo_feedback = VIRTUAL | RSSI | CURRENT | EXT1
 
 Feedback signal is calibrated by pulling down on pitch stick while doing the Tail servo bench tuning.
 Min, mid and max positions must be set before this (see "Tail servo bench tuning" above).
+If you start this, all bench tuning values will be saved automatically (there is no way to cancel).
 
-This also sets the tri_tail_servo_speed.
+This also sets the *tri_tail_servo_speed*.
 Check your servo speed from CLI!
 If servo speed is set, the FW will use the calibrated feedback signal from this point on.
 
